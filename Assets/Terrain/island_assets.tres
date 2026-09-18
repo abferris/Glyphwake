@@ -1,0 +1,123 @@
+[gd_resource type="Terrain3DAssets" format=3 uid="uid://cx45rgslngk3r"]
+
+[ext_resource type="Texture2D" uid="uid://bgs7ewyqqm36f" path="res://Assets/Terrain/layers/Rock.png" id="1_1jojp"]
+[ext_resource type="Texture2D" uid="uid://csjvrbq0hllx6" path="res://Assets/Terrain/layers/Sand.png" id="2_wjbej"]
+[ext_resource type="Texture2D" uid="uid://bu0normn4dnvo" path="res://Assets/Terrain/layers/Grass.png" id="3_hor3h"]
+[ext_resource type="Texture2D" uid="uid://cqas0380xi40s" path="res://Assets/Terrain/layers/Dirt.png" id="4_otg3v"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1jojp"]
+transparency = 4
+cull_mode = 2
+vertex_color_use_as_albedo = true
+backlight_enabled = true
+backlight = Color(0.5, 0.5, 0.5, 1)
+distance_fade_mode = 1
+distance_fade_min_distance = 128.0
+distance_fade_max_distance = 96.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_wjbej"]
+generated_type = 1
+height_offset = 0.5
+material_override = SubResource("StandardMaterial3D_1jojp")
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 128.0
+
+[sub_resource type="Image" id="Image_1jojp"]
+data = {
+"data": PackedByteArray(255, 255, 73, 146, 36, 73, 146, 36, 95, 132, 95, 115, 170, 170, 170, 170, 255, 0, 64, 2, 36, 73, 146, 36, 255, 123, 0, 0, 80, 80, 85, 85, 255, 0, 72, 146, 36, 73, 146, 36, 255, 123, 0, 0, 84, 85, 85, 85),
+"format": "DXT5 RGBA8",
+"height": 4,
+"mipmaps": true,
+"width": 4
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_otg3v"]
+image = SubResource("Image_1jojp")
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_67jxu"]
+name = "Rock"
+albedo_texture = ExtResource("1_1jojp")
+normal_texture = SubResource("ImageTexture_otg3v")
+resource_name = "Rock"
+
+[sub_resource type="Image" id="Image_wjbej"]
+data = {
+"data": PackedByteArray(255, 255, 73, 146, 36, 73, 146, 36, 95, 132, 95, 115, 170, 170, 170, 170, 255, 0, 64, 2, 36, 73, 146, 36, 255, 123, 0, 0, 80, 80, 85, 85, 255, 0, 72, 146, 36, 73, 146, 36, 255, 123, 0, 0, 84, 85, 85, 85),
+"format": "DXT5 RGBA8",
+"height": 4,
+"mipmaps": true,
+"width": 4
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_xgse2"]
+image = SubResource("Image_wjbej")
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_xgse2"]
+name = "Sand"
+id = 1
+albedo_texture = ExtResource("2_wjbej")
+normal_texture = SubResource("ImageTexture_xgse2")
+resource_name = "Sand"
+
+[sub_resource type="Image" id="Image_hor3h"]
+data = {
+"data": PackedByteArray(255, 255, 73, 146, 36, 73, 146, 36, 95, 132, 95, 115, 170, 170, 170, 170, 255, 0, 64, 2, 36, 73, 146, 36, 255, 123, 0, 0, 80, 80, 85, 85, 255, 0, 72, 146, 36, 73, 146, 36, 255, 123, 0, 0, 84, 85, 85, 85),
+"format": "DXT5 RGBA8",
+"height": 4,
+"mipmaps": true,
+"width": 4
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_5lqfj"]
+image = SubResource("Image_hor3h")
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_6kt2u"]
+name = "Grass"
+id = 2
+albedo_texture = ExtResource("3_hor3h")
+normal_texture = SubResource("ImageTexture_5lqfj")
+resource_name = "NewLayer 2"
+
+[sub_resource type="Image" id="Image_otg3v"]
+data = {
+"data": PackedByteArray(255, 255, 73, 146, 36, 73, 146, 36, 95, 132, 95, 115, 170, 170, 170, 170, 255, 0, 64, 2, 36, 73, 146, 36, 255, 123, 0, 0, 80, 80, 85, 85, 255, 0, 72, 146, 36, 73, 146, 36, 255, 123, 0, 0, 84, 85, 85, 85),
+"format": "DXT5 RGBA8",
+"height": 4,
+"mipmaps": true,
+"width": 4
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_n3fye"]
+image = SubResource("Image_otg3v")
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_5lqfj"]
+name = "Grass"
+id = 3
+albedo_texture = ExtResource("3_hor3h")
+normal_texture = SubResource("ImageTexture_n3fye")
+resource_name = "Grass"
+
+[sub_resource type="Image" id="Image_67jxu"]
+data = {
+"data": PackedByteArray(255, 255, 73, 146, 36, 73, 146, 36, 95, 132, 95, 115, 170, 170, 170, 170, 255, 0, 64, 2, 36, 73, 146, 36, 255, 123, 0, 0, 80, 80, 85, 85, 255, 0, 72, 146, 36, 73, 146, 36, 255, 123, 0, 0, 84, 85, 85, 85),
+"format": "DXT5 RGBA8",
+"height": 4,
+"mipmaps": true,
+"width": 4
+}
+
+[sub_resource type="ImageTexture" id="ImageTexture_qqe8f"]
+image = SubResource("Image_67jxu")
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_jc3nh"]
+name = "Dirt"
+id = 4
+albedo_texture = ExtResource("4_otg3v")
+normal_texture = SubResource("ImageTexture_qqe8f")
+resource_name = "Dirt"
+
+[resource]
+mesh_list = Array[Terrain3DMeshAsset]([SubResource("Terrain3DMeshAsset_wjbej")])
+texture_list = Array[Terrain3DTextureAsset]([SubResource("Terrain3DTextureAsset_67jxu"), SubResource("Terrain3DTextureAsset_xgse2"), SubResource("Terrain3DTextureAsset_6kt2u"), SubResource("Terrain3DTextureAsset_5lqfj"), SubResource("Terrain3DTextureAsset_jc3nh")])
+resource_name = "island_assets"

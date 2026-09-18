@@ -1,0 +1,29 @@
+Godot Engine v4.7.2.stable.mono.official.ed1daf0bf - https://godotengine.org
+D3D12 12_0 - Forward+ - Using Device #0: NVIDIA - NVIDIA GeForce RTX 4070 Ti
+
+WARNING: Terrain3DTextureAsset#6162:set_albedo_texture:79: Texture 'Rock' has no mipmaps. Change on the Import panel if desired.
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+WARNING: Terrain3DTextureAsset#2241:set_albedo_texture:79: Texture 'Sand' has no mipmaps. Change on the Import panel if desired.
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+WARNING: Terrain3DTextureAsset#8323:set_albedo_texture:79: Texture 'Grass' has no mipmaps. Change on the Import panel if desired.
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+WARNING: Terrain3DTextureAsset#4404:set_albedo_texture:79: Texture 'Grass' has no mipmaps. Change on the Import panel if desired.
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+WARNING: Terrain3DTextureAsset#0485:set_albedo_texture:79: Texture 'Dirt' has no mipmaps. Change on the Import panel if desired.
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+WARNING: Terrain3DTextureAsset#0472:set_albedo_texture:79: Texture 'Rock' has no mipmaps. Change on the Import panel if desired.
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+WARNING: Terrain3DTextureAsset#6553:set_albedo_texture:79: Texture 'Sand' has no mipmaps. Change on the Import panel if desired.
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+WARNING: Terrain3DTextureAsset#2635:set_albedo_texture:79: Texture 'Grass' has no mipmaps. Change on the Import panel if desired.
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+WARNING: Terrain3DTextureAsset#8716:set_albedo_texture:79: Texture 'Grass' has no mipmaps. Change on the Import panel if desired.
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+WARNING: Terrain3DTextureAsset#4797:set_albedo_texture:79: Texture 'Dirt' has no mipmaps. Change on the Import panel if desired.
+   at: push_warning (core/variant/variant_utility.cpp:1033)
+WARNING: instance_reset_physics_interpolation() is deprecated.
+   at: _instance_reset_physics_interpolation_bind_compat_104269 (servers/rendering/rendering_server.compat.inc:62)
+ERROR: WASAPI: GetBufferSize error
+   at: thread_func (drivers/wasapi/audio_driver_wasapi.cpp:778)
+WARNING: WASAPI: Current output_device invalidated, closing output_device
+   at: thread_func (drivers/wasapi/audio_driver_wasapi.cpp:849)

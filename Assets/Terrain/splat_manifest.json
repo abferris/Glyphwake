@@ -1,0 +1,41 @@
+{
+  "layers": [
+    { "index": 0, "name": "Rock", "albedo": "Rock.png", "normal": "" },
+    { "index": 1, "name": "Sand", "albedo": "Sand.png", "normal": "" },
+    { "index": 2, "name": "NewLayer 2", "albedo": "Grass.png", "normal": "" },
+    { "index": 3, "name": "Grass", "albedo": "Grass.png", "normal": "" },
+    { "index": 4, "name": "Dirt", "albedo": "Dirt.png", "normal": "" }
+  ],
+  "terrains": [
+    { "file": "splat_1000_50_0.png", "posX": 1000, "posZ": 0, "resolution": 512, "layers": 3, "layerNames": "Rock|Sand|NewLayer 2" },
+    { "file": "splat_2000_50_1000.png", "posX": 2000, "posZ": 1000, "resolution": 512, "layers": 0, "layerNames": "" },
+    { "file": "splat_-1000_50_0.png", "posX": -1000, "posZ": 0, "resolution": 512, "layers": 3, "layerNames": "Rock|NewLayer 2|Sand" },
+    { "file": "splat_0_50_2000.png", "posX": 0, "posZ": 2000, "resolution": 512, "layers": 1, "layerNames": "Rock" },
+    { "file": "splat_-2000_50_2000.png", "posX": -2000, "posZ": 2000, "resolution": 512, "layers": 0, "layerNames": "" },
+    { "file": "splat_-2000_50_-3000.png", "posX": -2000, "posZ": -3000, "resolution": 512, "layers": 0, "layerNames": "" },
+    { "file": "splat_-1000_50_-2000.png", "posX": -1000, "posZ": -2000, "resolution": 512, "layers": 3, "layerNames": "Rock|NewLayer 2|Sand" },
+    { "file": "splat_1000_50_-3000.png", "posX": 1000, "posZ": -3000, "resolution": 512, "layers": 0, "layerNames": "" },
+    { "file": "splat_-1000_50_1000.png", "posX": -1000, "posZ": 1000, "resolution": 512, "layers": 3, "layerNames": "Rock|NewLayer 2|Sand" },
+    { "file": "splat_-1000_50_-1000.png", "posX": -1000, "posZ": -1000, "resolution": 512, "layers": 3, "layerNames": "Rock|NewLayer 2|Sand" },
+    { "file": "splat_-1000_50_2000.png", "posX": -1000, "posZ": 2000, "resolution": 512, "layers": 0, "layerNames": "" },
+    { "file": "splat_2000_50_-1000.png", "posX": 2000, "posZ": -1000, "resolution": 512, "layers": 3, "layerNames": "Rock|Sand|NewLayer 2" },
+    { "file": "splat_0_50_-1000.png", "posX": 0, "posZ": -1000, "resolution": 512, "layers": 2, "layerNames": "Rock|NewLayer 2" },
+    { "file": "splat_1000_50_-1000.png", "posX": 1000, "posZ": -1000, "resolution": 512, "layers": 3, "layerNames": "Rock|Sand|NewLayer 2" },
+    { "file": "splat_-2000_50_0.png", "posX": -2000, "posZ": 0, "resolution": 512, "layers": 3, "layerNames": "Rock|NewLayer 2|Sand" },
+    { "file": "splat_2000_50_-3000.png", "posX": 2000, "posZ": -3000, "resolution": 512, "layers": 1, "layerNames": "Rock" },
+    { "file": "splat_0_50_0.png", "posX": 0, "posZ": 0, "resolution": 512, "layers": 4, "layerNames": "Rock|Grass|Dirt|NewLayer 2" },
+    { "file": "splat_2000_50_0.png", "posX": 2000, "posZ": 0, "resolution": 512, "layers": 3, "layerNames": "Rock|Sand|NewLayer 2" },
+    { "file": "splat_0_50_1000.png", "posX": 0, "posZ": 1000, "resolution": 512, "layers": 4, "layerNames": "Rock|Grass|NewLayer 2|Sand" },
+    { "file": "splat_1000_50_1000.png", "posX": 1000, "posZ": 1000, "resolution": 512, "layers": 3, "layerNames": "Rock|NewLayer 2|Sand" },
+    { "file": "splat_2000_50_-2000.png", "posX": 2000, "posZ": -2000, "resolution": 512, "layers": 1, "layerNames": "Rock" },
+    { "file": "splat_-2000_50_-1000.png", "posX": -2000, "posZ": -1000, "resolution": 512, "layers": 0, "layerNames": "" },
+    { "file": "splat_2000_50_2000.png", "posX": 2000, "posZ": 2000, "resolution": 512, "layers": 0, "layerNames": "" },
+    { "file": "splat_0_50_-2000.png", "posX": 0, "posZ": -2000, "resolution": 512, "layers": 4, "layerNames": "Rock|Grass|NewLayer 2|Sand" },
+    { "file": "splat_-2000_50_1000.png", "posX": -2000, "posZ": 1000, "resolution": 512, "layers": 3, "layerNames": "Rock|NewLayer 2|Sand" },
+    { "file": "splat_0_50_-3000.png", "posX": 0, "posZ": -3000, "resolution": 512, "layers": 0, "layerNames": "" },
+    { "file": "splat_1000_50_2000.png", "posX": 1000, "posZ": 2000, "resolution": 512, "layers": 1, "layerNames": "Rock" },
+    { "file": "splat_-1000_50_-3000.png", "posX": -1000, "posZ": -3000, "resolution": 512, "layers": 0, "layerNames": "" },
+    { "file": "splat_-2000_50_-2000.png", "posX": -2000, "posZ": -2000, "resolution": 512, "layers": 1, "layerNames": "Sand" },
+    { "file": "splat_1000_50_-2000.png", "posX": 1000, "posZ": -2000, "resolution": 512, "layers": 3, "layerNames": "Rock|Sand|NewLayer 2" }
+  ]
+}

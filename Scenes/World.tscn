@@ -1,0 +1,106 @@
+[gd_scene format=3 uid="uid://c8c1miacfxcrp"]
+
+[ext_resource type="Terrain3DAssets" uid="uid://cx45rgslngk3r" path="res://Assets/Terrain/island_assets.tres" id="1_gjpho"]
+[ext_resource type="Script" uid="uid://1eeeycrjpp45" path="res://Scripts/World/WaterZone.cs" id="2_p70al"]
+[ext_resource type="PackedScene" path="res://Scenes/Player.tscn" id="3_45d1s"]
+
+[sub_resource type="Gradient" id="Gradient_q2d71"]
+offsets = PackedFloat32Array(0.2, 1)
+colors = PackedColorArray(1, 1, 1, 1, 0, 0, 0, 1)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_uo7di"]
+noise_type = 2
+frequency = 0.03
+cellular_jitter = 3.0
+cellular_return_type = 0
+domain_warp_enabled = true
+domain_warp_type = 1
+domain_warp_amplitude = 50.0
+domain_warp_fractal_type = 2
+domain_warp_fractal_lacunarity = 1.5
+domain_warp_fractal_gain = 1.0
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_kn06e"]
+noise = SubResource("FastNoiseLite_uo7di")
+color_ramp = SubResource("Gradient_q2d71")
+seamless = true
+
+[sub_resource type="Terrain3DMaterial" id="Terrain3DMaterial_7yo87"]
+_shader_parameters = {
+&"bias_distance": null,
+&"blend_sharpness": null,
+&"depth_blur": null,
+&"enable_macro_variation": null,
+&"enable_projection": null,
+&"flat_terrain_normals": null,
+&"macro_variation1": null,
+&"macro_variation2": null,
+&"macro_variation_slope": null,
+&"mipmap_bias": null,
+&"noise1_angle": null,
+&"noise1_offset": null,
+&"noise1_scale": null,
+&"noise2_scale": null,
+&"noise_texture": SubResource("NoiseTexture2D_kn06e"),
+&"projection_threshold": null
+}
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ti1bm"]
+transparency = 1
+albedo_color = Color(0.09, 0.31, 0.45, 0.72)
+metallic = 0.3
+roughness = 0.08
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_op4cu"]
+size = Vector2(9000, 9000)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_8l3nt"]
+size = Vector3(9000, 50, 9000)
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_kwl8l"]
+
+[sub_resource type="Sky" id="Sky_xiqgv"]
+sky_material = SubResource("ProceduralSkyMaterial_kwl8l")
+
+[sub_resource type="Environment" id="Environment_waglr"]
+background_mode = 2
+sky = SubResource("Sky_xiqgv")
+ambient_light_source = 3
+fog_light_color = Color(0.05, 0.24, 0.42, 1)
+fog_density = 0.45
+
+[node name="World" type="Node3D" unique_id=1223389593]
+
+[node name="Terrain3D" type="Terrain3D" parent="." unique_id=8228599]
+data_directory = "res://Assets/Terrain/island_data"
+material = SubResource("Terrain3DMaterial_7yo87")
+assets = ExtResource("1_gjpho")
+vertex_spacing = 1.953125
+top_level = true
+metadata/_edit_lock_ = true
+
+[node name="Water" type="MeshInstance3D" parent="." unique_id=1322131637]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 500, 80, -1439.159)
+material_override = SubResource("StandardMaterial3D_ti1bm")
+mesh = SubResource("PlaneMesh_op4cu")
+
+[node name="WaterZone" type="Area3D" parent="." unique_id=1514871703]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 500, 80, 0)
+script = ExtResource("2_p70al")
+WaterSurfaceY = 80.0
+
+[node name="ZoneShape" type="CollisionShape3D" parent="WaterZone" unique_id=1393050239]
+visibility_parent = NodePath("../../Water")
+shape = SubResource("BoxShape3D_8l3nt")
+debug_color = Color(0, 0.6, 0.69803923, 0.8)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=220040755]
+environment = SubResource("Environment_waglr")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1660147897]
+transform = Transform3D(0.81915206, 0.4262504, -0.38379753, 0, 0.66913056, 0.74314487, 0.57357645, -0.6087487, 0.54811966, 0, 0, 0)
+light_energy = 1.4
+shadow_enabled = true
+
+[node name="Player" parent="." unique_id=158661393 instance=ExtResource("3_45d1s")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1000, 88, -1130)
