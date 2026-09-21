@@ -5,356 +5,402 @@ yet). Covers how Glyphs map to skills, how they classify, and how points scale t
 
 ## Core model
 
-- **1 Glyph = 1 skill** for actives. A fireball is one Glyph; a single-target fire shot is a
-  separate Glyph. Dash is an active Glyph; double jump and wall jump are passive Glyphs.
-- **Passives do not add a bindable skill.** They are either **Modifiers** (change existing
-  stats/effects/capabilities — faster run, more health, lifesteal) or **Techniques**
-  (mana-driven actions/capabilities riding on an existing input — double jump, wall jump,
-  waterbreathing, spiderclimb). A passive is never selectable and cannot appear in the
-  spell list.
-- **Categories** (from `GAME.md`): Capability, Movement, Utility, Attack, Summoning.
-- A Glyph that is acquired but has **0 points is inactive and not in your spell list** —
-  nothing it grants exists until the first point is spent.
+- Every glyph activates something. 
+- Major glyph types
+    - Passive
+    - Active
+    - Modifiers
+- 100 points to allocate to all glyphs
+  - more points to a rune will make it stronger
+- Must have 1 point to be active  that can be put in hotbar for casting
 
 ## Activation & point scaling
 
-- **Total pool is 100 points** (down from the original 1000 design). Each point is 1% of
-  your build — coarse enough to play without micro-calculations, single-point enough to
-  dial in a build by hand.
-- The original anchors 10/30/50/100/150 (of 1000) are exactly the same fractions as
-  **1/3/5/10/15 of 100** — the impact curves didn't change, only the number size.
-- **Activation threshold = 1 point** (`GlyphData.ActivationPoints`), which is a hard rule
-  (0 = inactive), also the first reading guidepost ("minimally useful").
-  `GlyphData.IsActiveAt(points)` encodes this, so both the
-  allocation UI and the cast/effect systems must respect it.
-- Because 1 point activates, **base values are defined at 1 point**, and every additional
-  point adds that Glyph's `perPoint` growth:
-  `ValueAt(points) = base + perPoint * (points - 1)`.
-- **Any investment is valid** — there are no required tiers or breakpoints. Each point is
-  1% of the 100-point pool, so a build is just "whatever percentage you chose": 2%, 20%,
-  or dumping most of the pool into one ace skill are all legitimate.
-- **1/3/5/10/15 are reading guideposts, not anchors and not targets.** They exist to help
-  read how effective a skill is in a build (e.g. alongside the glyph visual prominence in
-  `GAME.md`), never to constrain what a player may invest:
-
-  | Investment in one Glyph | Reads as |
-  |---|---|
-  | 1 | minimally useful |
-  | 3 | a secondary spell |
-  | 5 | decently impactful, something you use regularly |
-  | 10 | a primary Glyph |
-  | 15 | specialist — the build is centered on it |
-
-  They are reference points for reading builds and for discussing your own, not enforced
-  thresholds. If surfaced in UI at all, it is as read-only shorthand. Implemented as
-  guidepost constants on `GlyphData`.
-- **No cap per Glyph** — `maxPoints` was removed. You may sink the whole 100-point pool
-  into one attack; nothing in the data model stops you, and the counter-play is other
-  players' glyphs/tactics, not a ceiling.
-- **Theories need real numbers:** everything a player can spend points on exposes its
-  exact base and per-point value, so the allocation UI prints "Damage: 12 + 2/point"
-  style summaries. This is `ScaledStat` and the `*At(points)` helpers.
-- **Spells must be fine without passives** — base power is adequate on its own. Passives
-  are a tailoring layer for specific playstyles, not a requirement for viability.
+- Total pool is 100 points
+  - Allows for theory crafting
+  - Can have round numbers applied for easy builds without effort
+- Glyph strength will be dependent on how many points you put into it
+  - Basic Guidepost for how strong a glyph is in a build
+    - 1 point: Its there, but not important 
+    - 3 points: Useful secondary glyph
+    - 5 points: Regularly used, decently impactful, not super hard hitting
+    - 10 points: Primary used glyph in build
+    - 15 points: This is probably what your build is built around
+    - 20+ points: Specialist - have sacrificed other options to make this very powerful.
+- Activation threshold = 1 point 
+  - When setting up glyphs, if there are no points in a glyph you cannot place it in your toolbars
+  - If all points are removed from a glyph, the glyph will be removed from all hotkey toolbars on save
+- Extra points in a glyph will scale the strength of it
+  - Different glyphs will scale differently
+    - Not locked in to flat scaling or exponential scaling
+    - For active glyphs, skill shot glyphs will scale harder
+    - For passive glyphs, specialized glyphs will scale harder 
+      - EX: Zephyr Glyph Damage Buff vs Basic Glyph Damage Buff
+        - Zephyr would start at a higher number, and more points would give a larger boost
+  - Should only change numbers of said glyph, not what it does or how it works
+  - While extra points will strengthen a rune, there are no breakpoints to add functionality
+- No cap per Glyph
+  - You may sink the whole 100-point pool and make a incredibly powerful attack
+  - Over investment in one skill leaves you vulnerable to simple counterplay 
+  - May need to add mechanics to make sure this isn't abused to destroy mobs.
+- When allocating glyphs, you will be given numbers
+- glyphs base power must be fine without passives buffs.
+  - Passives are a tailoring layer for specific playstyles, not a requirement for viability.
 
 ## Classification
 
-Classification is hierarchical. The first split — and the easiest one — is **Active vs
-Passive**; every other classification sits underneath it.
+Classifications are key to the system. Some passive skills are specific to particular
+types of glyphs. We will be heavily reliant on these tags.
 
-1. **Active vs Passive** (which concrete type the Glyph is):
-   - **Active Glyphs** (`ActiveGlyphData`) **add a skill to the skill tree / spell list.**
-     They are what the player casts, binds to a hotbar slot, and invests points in.
-   - **Passive Glyphs** (`PassiveGlyphData`) **do not add a skill.** They are **Modifiers**
-     (change stats/effects/capabilities) or **Techniques** (mana-driven actions on existing
-     inputs), and modifier effects only apply while the affected skills are active.
-2. **`GlyphCategory`** (Capability, Movement, Utility, Attack, Summoning) applies within
-   either side — an active and a passive can both be, say, Movement.
-3. **School** — the *verb* the magic performs (see *Schools of magic*). A fixed,
-   structured set.
-4. **Elements** — the energy type (see *Elements*).
-5. **Tags** — `GlyphTag` assets for any further classification. Adding a tag means creating
-   an asset, not editing code. Passives can match on tags, schools, or elements.
+### Usage
 
-### Passives → spells (using tags)
+- Active Glyph
+  - Add a skill which can be bound to hotkey groups 
+  - Can be used in the Game 
+  - Will have a cost
+    - Usually mana
+    - Some may cost health
+  - not allowed in safe zones
+  - Examples
+    - Heal
+    - Firebolt
+    - Summon Elemental
+- Passive Glyph
+  - Do not add a skill. 
+  - usable in safe zones
+  - Modify things 
+    - Glyphs
+      - Some may change numbers
+        - Damage
+        - Mana cost
+      - Some may alter how a skill works
+        - Number of Projectiles
+        - Area of Effect
+        - Number of Targets
+        - Projectile speed
+      - May target specific glyph classification
+    - Base Stats
+- Techniques
+  - Do not add a skill to the skill bar
+  - Add new capabilities
+  - Will have a cost when used
+  - Examples:
+    - double jump
+    - wall jump
 
-- A passive modifier matches a **set of spells** and applies an operation to one `StatKey`
-  (damage, radius, mana cost, cast time...). The set can **combine filters** — element,
-  school, and tag at once (e.g. "all Inferno *Kindling* spells").
-- Three operations (see *Modifier math & stacking*): **Flat**, **Percent**, **Multiply**.
-  - "larger AoE" → `Flat Radius` to spells tagged `AoE`
-  - "lower mana" → `Multiply ManaCost` to all
-  - "stronger fire" → `Percent Damage` to spells of the Inferno element
+### Schools of magic
 
-## Schools of magic
+A glyph's school is the essence of how it effects the world around it. This has nothing to do with
+its element, target, shape, and cast/effect time. This is originally an idea from Dungeons & Dragons
+which has been modified to fit my needs.
 
-A Glyph's **school** is the *verb* — what the magic does to reality — independent of its
-element (energy type), target, shape, and cast/effect time. Affinities and specialist
-passives key off schools. The set is original rather than lifted from D&D, and deliberately
-smaller (6 vs D&D's 8).
+- Kindling 
+  - channeling energy to create an effect
+  - Example:
+    - fireball
+    - Stone Wall
+    - healing
+    - life-drain
+- Warding 
+  - protecting and gaurding target from effects
+  - create barriers 
+  - absorb glyph effects 
+  - dispel/counter
+  - silence (this is a stretch)
+- Calling 
+  - spirit-binding
+    - shape changing is considered a form of binding a spirit to oneself
+    - Could bind to totem
+  - summoning 
+- Seeking 
+  - Using power to gain knowledge
+  - detect players
+  - detect monster 
+  - get knowledge of other player's build 
+- Flowing
+  - Using power to modify movement
+  - feather-fall
+  - double jump
+  - Wall jump
+  - dash
+  - haste
+  - slow
+  - teleport
+- Shaping 
+  - Using power to alter properties
+  - mostly passive 
+  - in game altering your own substance/body 
+  - tougher skin 
+  - altered glyphs
 
-| School | Verb | Lean | Covers |
-|---|---|---|---|
-| **Kindling** | channel raw energy | active | fireballs, lightning, healing (life energy), life-drain, undeath, light/shadow, smoke |
-| **Warding** | prevent & deny | active | barriers, absorb, dispel/counterspell, silence, isolation, severs |
-| **Calling** | spirit-binding | active | summons/minions; a spirit bound into yourself (shapeshift), an object (animate), or the ground (roots) |
-| **Seeking** | perceive & know | active | reveal, detect, foresee, scry |
-| **Flowing** | move through space | active | fall control, jumps, dash, haste/slow, teleport, portals |
-| **Shaping** | alter physical properties | mostly passive | altering your own substance/body (tougher skin, altered limbs, enhanced metabolism) |
+### Elements
 
-### School principles (decided)
+An element is the energy type a glyph channels — the character the mana takes,
+independent of its school, target, shape, and cast/effect time. Element is optional. Example of a glyphs without elements are town portal.
 
-- **School = mechanism (verb), not purpose (domain).** Healing is Kindling (channeled life
-  energy) rather than a restoration school; necromancy is Kindling channeled with **Death**
-  energy rather than its own school.
-- **Life and Death are energies, not schools** (see *Elements*).
-- **No mind control and no hard lockout.** *Compelling* (influence minds) was cut: it takes
-  away the opponent's agency and isn't fun to play against. Control is always soft —
-  silence, root, isolation, slow — never petrify, stun-lock, or charm.
-- **Shaping is mostly passive.** True transformation lives on passive glyphs; active Shaping
-  is currently empty. Candidates were redistributed: stonehide → Warding (or passive),
-  featherfall / spiderclimb / waterbreathing → Flowing or passive, shapeshift / animate
-  object → Calling, stonewall → Kindling; enlarge/shrink, state-of-matter change, and
-  quicksand were cut.
-- **No duplicate spells.** One effect, one spell — e.g. immobilize is Calling's roots, not
-  also a separate "hold" spell.
-- **Element is optional.** Some spells are pure-school (town portal = Flowing, silence =
-  Warding).
+- Inferno
+  - analogous elements
+    - fire 
+  - damage type
+    - heat
+  - extra effects
+    - burning effect
+  - element hallmarks
+    - typically more damage
+    - less effected by gravity (straighter skill shots)
+    - damage over time
 
-## Elements
-
-An element is the **energy type** a spell channels — the character the **mana** takes,
-independent of its school (verb), target, shape, and cast/effect time. Elements determine
-**damage type and resistances**. Element is **optional**: pure-school spells (town portal =
-Flowing, silence = Warding) have none.
-
-Six elements, each an internal duality:
-
-| Element | Covers | Damage form |
-|---|---|---|
-| **Inferno** | fire / heat | burning |
-| **Aqua** | water + ice | piercing (ice) / bludgeoning (crushing water) |
-| **Terra** | earth / stone | bludgeoning / piercing |
-| **Zephyr** | air / wind | slashing |
-| **Anima** | life + death (+ body/physical attributes) | life / decay |
-| **Lux** | light + shadow | **none** — utility only |
+- Aqua
+  - analogous elements
+    - water + ice 
+  - damage type
+    - piercing (ice) 
+    - bludgeoning (crushing water) 
+    - slashing
+    - cold
+  - status effects
+    - slow 
+    - stun 
+    - root effect
+  - element hallmarks
+    - crowd control
+    - effected by gravity
+- Terra
+  - analogous elements
+    - earth 
+  - damage type
+    - bludgeoning 
+    - piercing 
+    - slashing
+  - status effects
+    - knockback 
+    - stun 
+    - root
+  - element hallmarks
+    - slower attacks
+    - more damage
+- Zephyr
+  - analogous elements
+    - air 
+  - damage type
+    - slashing 
+    - piercing
+  - status effects
+    - knockback effect
+  - element hallmarks
+    - Faster Projectiles
+    - no effect by gravity
+    - reliable to hit
+    - dissipates over range
+- Anima
+  - analogous elements
+    - life + death (+ body/physical attributes) 
+    - poison
+  - damage/effect types 
+    - healing
+    - necrotic damage
+  - status effects
+    - weakness
+    - mana burn
+- Lux
+  - light + shadow 
+  - damage type
+    - Radiant damage
+  - status effect
+    - Blind 
+  - element hallmarks
+    - not damage based
+    - visual effects
 
 ### Element principles (decided)
 
-- **Damage type ≈ element.** Piercing / slashing / bludgeoning describe *how* an element
-  hurts; **resistances are per element** (Inferno, Aqua, Terra, Zephyr, Anima). **Lux deals
-  no damage** and therefore has no resistance.
-- **Anima covers "physical" body effects.** A gauntleted punch and a thrown rock are both
-  **Terra** (earth); body/self effects are **Anima**. So a double jump is **Zephyr + Anima**
+- Damage type does not mean element type. Damage type is how the 
+- Anima covers "physical" body effects. A gauntleted punch and a thrown rock are both
+  Terra (earth); body/self effects are Anima. So a double jump is Zephyr + Anima
   (wind + body), not a separate "physical" type.
-- **Multi-element is allowed.** A spell may carry several elements:
-  - Meteor = **Inferno + Terra**
-  - Lightning = **Zephyr + Inferno**
-  - Fire punch = **Inferno** (the element carries the damage; not a hybrid)
-  - Double jump = **Zephyr + Anima** (non-damaging)
-- **Split damage equally** among a spell's damaging elements (temporary rule).
-- **Element is more than flavor:** it decides what the spell is resisted by.
-- **Life-force exception:** a few **Anima** spells spend **health** instead of mana (blood
+- Multi-element is allowed. A glyph may carry several elements:
+  - Meteor = Inferno + Terra
+  - Lightning = Zephyr + Inferno
+  - Fire punch = Inferno (the element carries the damage; not a hybrid)
+  - Double jump = Zephyr + Anima (non-damaging)
+- Split damage equally among a glyph's damaging elements (temporary rule).
+- Element is more than flavor: it decides what the glyph is resisted by.
+- Life-force exception: a few Anima glyphs spend health instead of mana (blood
   magic) as deliberate outliers.
 
-Open: whether specific mixes get a formal **combo table** (with named rules) or stay
+Open: whether specific mixes get a formal combo table (with named rules) or stay
 descriptive.
 
-## Mana (essence)
+### Resources
+This section covers what a glyph's cast will cost. Sometimes a cost is a one time thing. For channelling and some togglable aura effects, the cost of use will be per time its used. For effect over time, the cost will be a one time
+- mana
+  - raw innate magical energy
+  - used for almost every glyph
+- health
+  - some glyphs may use health
+    - can be the full cost
+    - could be a partial cost
+    - can use a passive glyph to convert part of the glyph cost into health
+- stamina
+  - typically used for running
+  - some glyphs may use it
+    - double jump
+    - air dash
 
-Mana is **raw, elementless magical energy** — the common fuel for all magic. The **school**
-is what you do with it; the **element** is what it becomes. Mana is not an element, not
-life force (Anima's domain), and not death (Kindling + Death). Keeping it neutral is what
-lets a spell choose any element (or none) at cast time.
+### Recovery of Resources
 
-### Costs
+- Health and mana have a slow passive regeneration at all times.
+- In safe zones regeneration is boosted
+- Resting can boost regeneration
+- Passive Glyphs can be boost regeneration, cut costs, or grant on-kill refill
+- maybe some channel effects can massively boost regeneration
 
-- **All active spells cost mana per cast.** The **basic attack is free**, so a mana-light
-  build still works.
-- **Channels and Techniques drain while held** — Shield, Dragon's Breath, waterbreathing,
-  spiderclimb, double/wall jump.
-- **Life-force exception:** a few **Anima** spells spend **health** instead of mana (see
-  *Elements*).
+### Active Glyph Targeting
 
-### Recovery
+Target type — what the glyph addresses:
 
-- **Slow passive regen** at all times, plus a **full refill at safe zones**.
-- A **Channel spell** refills mana quickly but **locks out other casting while held** —
-  channeling ambient essence into yourself. (School/name open.)
-- **Passive Glyphs** boost regen, cut costs, or grant on-kill refill. Max mana and regen are
-  `Self`-targeted modifiers (`MaxMana`, `ManaRecovery` in `StatKey`).
-- **Consumables** may give a quick influx (undecided).
+- Self 
+  - applied to / centered on the caster 
+  - Shield, Dash, Healing Aura 
+- Single 
+  - targets one entity 
+  - magic missile 
+  - buff a target
+- Projectile
+  - emits single shot
+- area/point on the ground
+  - targets terrain
+- direction
+  - dragon's breath
 
-Open: what the mana-refill Channel spell is called and which school it belongs to.
+### Active Glyph Affects — who the target/area is allowed to affect (independent of target type):
 
-## Active spells
-
-Active spells are described along independent axes: **targeting** (what it aims at),
-**cast time** (the commitment to produce it), and **effect time** (how the result behaves
-once produced). A spell picks one of each — e.g. an Impulse-cast Meteor is Point-targeted
-and leaves an Instant effect.
-
-### Targeting
-
-**Target type** — what the spell addresses:
-
-| Target | Meaning | Examples |
-|---|---|---|
-| **Self** | applied to / centered on the caster | Shield, Dash, Healing Aura |
-| **Single** | one entity | Firebolt, Heal, Healing Bond |
-| **AoE** | an area | Dragon's Breath, totem aura |
-| **Point** | a location in space / on the ground | Meteor, Town Portal |
-
-**Affects** — who the target/area is allowed to affect (independent of target type):
-
-| Affects | Meaning |
-|---|---|
-| **Enemies** | only enemies |
-| **Allies** | only allies (and possibly the caster) |
-| **Self** | only the caster |
-| **All** | anything in the target/area |
-| **By tag/type** | only entities matching a tag (e.g. a totem: "people of type in range") |
-
-**Shape** — the physical form the spell takes:
-
-| Shape | Meaning | Examples |
-|---|---|---|
-| **Projectile** | a skillshot that flies through the air to its target | Firebolt, Meteor |
-| **Beam** | a continuous ray / tether between caster and target | Healing Bond |
-| **Cone** | spreads outward from its origin | Dragon's Breath |
-| **Radius / aura** | area around a center | Healing Aura, totem aura |
-| **Point-placed** | placed at a location and remains there | totem, traps, Town Portal |
-| **None / self** | no travel geometry | Shield, Dash |
+- Enemies 
+  - must be in range
+- Allies 
+  - only allies (and possibly the caster) 
+  - must be in range
+- Self 
+  - only the caster 
+  - sometimes effected by # of targets glyph to include party members
+    - additional targets are in range
+- terrain
+  - must be in range
 
 ### Cast time (commitment)
 
-The commitment needed to produce the spell:
 
-| Tier | Delay / commitment | Movement | Interruptible |
-|---|---|---|---|
-| **Impulse** | none — fires immediately | free | no |
-| **Focus** | wind-up; length varies (short or long) | free | no |
-| **Channel** | must keep casting; stopping ends it | free | no (you choose to stop) |
-| **Ritual** | long, demands undivided attention | locked | yes |
-
-Examples:
-- **Impulse** — Dash; Firebolt.
-- **Focus** — Meteor: a powerful AoE ball of flaming material (physical + fire damage),
-  pointed at a spot. Healing Aura: a longer Focus cast that sets a **Lasting** healing
-  effect centered on the caster.
-- **Channel** — Shield: spend mana continuously to hold up a barrier. Dragon's Breath: a
-  continuous cone of flame in the direction you face while casting.
-- **Ritual** — Town Portal: teleport to town.
+- Impulse 
+  - none — fires immediately 
+  - does not effect movement  
+- Focus 
+  - wind-up; length varies (short or long) 
+  - does not effect movement  
+  - not interruptable except by stun or silence
+- Channel 
+  - must keep casting
+  - might have a wind up before it takes effect 
+  - glyph use stops when done casting ends it 
+  - does not effect movement (might change to slows movement)
+  - interruptable by stun or silence 
+- Ritual 
+  - long casting time
+  - cannot move  
+  - interruptable by damage
 
 ### Effect time (persistence)
 
-How the result behaves once produced; a spell picks one tier:
+This is how long the effects of the glyph last. It might be multiple, like direct damage then a slow or burn
+- Instant 
+  - resolves now; nothing persists 
+- Channel 
+  - effect exists only while you keep casting 
+- Anchored 
+  - persists while its physical thing exists (totem, summon, ward) 
+- Over time 
+  - lasts a set duration 
 
-| Tier | Meaning |
-|---|---|
-| **Instant** | resolves now; nothing persists |
-| **Channel** | effect exists only while you keep casting |
-| **Anchored** | persists while its physical thing exists (totem, summon, ward) |
-| **Lasting** | lasts a set clock duration |
-
-Examples:
-- **Instant** — Heal (one-time heal); Firebolt; Meteor (throw a big burning rock that
-  resolves on impact).
-- **Channel** — Shield; Dragon's Breath; Healing Bond (a stream of healing to one target
-  for as long as you keep casting).
-- **Anchored** — Summon ____ (any conjured entity; persists until gone); ____ Totem
-  (emits an aura from a placed totem — those of the matching type in range feel its
-  effects); Trigger Trap Glyph (paired with a second spell and casts that spell when
-  triggered); Proximity Trap Glyph (casts its paired spell when an enemy enters range).
-- **Lasting** — most aura spells; Smokescreen (a fog that obscures for a set time).
 
 ### Status effects
 
-Some spells apply a lingering status to what they hit — **slow, burning, dazed**, etc. Only
-a minority of spells do. Statuses belong to the **spell**, not to passives.
+Some glyphs apply a lingering status to what they hit — slow, burning, dazed, etc. Only
+a minority of glyphs do. 
+- burn
+- slow
+- root
+- stun
+- knockback
+  - not status effect but might put you in the air
+- mana burn
 
-Clarification — **Focus vs Ritual is freedom, not cast length.** Focus can wind up short
-*or* long and stays mobile + uninterruptible; a Ritual locks you in place and can be
-interrupted. **Focus vs Channel:** Focus completes and *then* applies its effect (Instant,
-Lasting, or Anchored); Channel only holds its effect while you keep casting.
+### About passives
 
-## Passives
-
-Passives never add a bindable skill. They are either **Modifiers** (change stats/effects/
-capabilities) or **Techniques** (mana-driven actions on existing inputs) — see
-*Modifiers vs Techniques*.
-
-### What a passive can target
-
-| Target | Meaning |
-|---|---|
-| **Self** | your own stats/state — health, mana, regen, speed, carry, point pool, ... |
-| **Spell** | one specific spell |
-| **Element** | every spell of an element |
-| **School** | every spell of a school |
-
-The last three are all "a set of spells," selected by name, element, or school. So a
-passive always reduces to **Self** or **a set of spells**. There is deliberately no 5th
-"system" target:
-
-- **On-hit / trigger effects** → part of the **Spell** they belong to.
-- **Cooldowns** → a property of the **Spell**.
-- **Point pool** → **Self**.
-- **Glyph slots** → do not exist; slots are **unlimited** (managing them is the player's
-  problem).
-- **Adding a target to a spell** (a spell gets two targets) → a **Spell** modification.
-
-Summons, allies, and enemies are reached through the targeted spell's **Affects**, never as
+- Targets
+  - Self 
+    - your own stats/state 
+    - health
+    - mana 
+    - regen 
+    - speed 
+  - glyphs 
+    - All 
+    - Classification 
+      - element 
+      - School 
+      - anything talked about above
+- Glyph modifications
+  - On-hit / trigger effects
+    - burn
+    - slow
+    - poison
+  - Cooldowns 
+  - mana cost pool → Self.
+  - Adding a target to a glyph 
+    - will probably nerf the damage of the glyph for more targets
+- always positive for the caster
+Summons, allies, and enemies are reached through the targeted glyph's Affects, never as
 a passive's own target.
 
-### Modifiers vs Techniques
+### Techniques
 
-- **Modifier** — changes a stat, effect, or capability; **always-on** (no input, no mana).
-  **Lifesteal** is a modifier: a passive stat that normally **starts at 0** (some Anima
-  spells grant lifesteal intrinsically instead). Examples: +health, +regen, resistances,
-  lifesteal.
-- **Technique** — an action/capability that **rides an existing input** and **consumes
-  mana**; not selectable, no hotbar slot, so it is still a passive. Points scale it:
-  - **Double jump** (press jump again while airborne) — scaled distance; needs mana.
-  - **Wall jump** (press jump while against a wall) — scaled force.
-  - **Waterbreathing** — no breath timer; you spend mana instead, and start drowning when
-    it runs out.
-  - **Spiderclimb** — climb while mana lasts; points scale climb speed.
+Techniques are an action/capability that rides an existing input and consumes mana. These
+do not create glyphs placable in the hotkey toolbar, so it is not and active. The do add extra functionality
+that did not exist before, so they are not passive glyphs. Extra points in the glyph will scale it
+Examples:
+- Double jump (press jump again while airborne) — scaled distance; needs mana.
+- Wall jump (press jump while against a wall) — scaled force.
+- Waterbreathing — no breath timer; you spend mana instead, and start drowning when it runs out.
+- Spiderclimb — climb while mana lasts; points scale climb speed.
 
-Most passives are always-on; a few are state-gated (double jump only matters *while
-airborne*). We do not build a general condition system for passives.
+When points are in them, they are always on
 
 ### Modifier math & stacking
 
-When several modifiers touch the same stat, resolve in three stages: **flat → percent →
-multiply**.
+When several modifiers touch the same stat, resolve in three stages: flat → percent →
+multiply.
 
-- **Flat** — added first (e.g. +10 damage).
-- **Percent** — all percents **add together**, then apply as one (two +10% = +20%).
-- **Multiply** — applied last, multiplicatively (x2, x1.5).
+- Flat — added first (e.g. +10 damage).
+- Percent — all percents add together, then apply as one (two +10% = +20%).
+- Multiply — applied last, multiplicatively (x2, x1.5).
 
 This is predictable and easy to balance. (`PassiveModifier` currently has `Add`/`Multiply`
 only and will need a percent operation.)
 
-### Passive constraints (decided)
 
-- **School and element are both optional on passives for now** (allows mundane passives,
-  e.g. +carry weight); may change later.
-- **Passives are strictly positive** — no drawbacks/curses (revisit as a separate concept
-  later).
+### Unresolved passives (unresolved)
 
-### Non-magical passives (unresolved)
-
-- There is **no XP** — progression is **acquiring Glyphs**, not grinding levels.
-- **Luck**, **money**, and **loot** are undecided: the game is Glyph/magic-based, so their
-  purpose is unclear. Items are expected at least for **fetch quests**. Revisit later.
+- Luck
+- money
+- loot drop
 
 ## Not built yet (next layers)
 
+- Just about everything
 - Casting/execution of skills (needs the AimSource → AimTarget pipeline)
-- Status effects on spells (slow, burning, dazed, ...)
+- Status effects on glyphs (slow, burning, dazed, ...)
 - Techniques (mana-driven passive abilities: double jump, wall jump, waterbreathing,
   spiderclimb)
-- Mana pool, regen, and the mana-refill Channel spell
+- Mana pool, regen, and the mana-refill Channel glyph
 - Point allocation + the 100-point pool
 - Unlocks via missions, reset in safe zones, hotbar binding (see `ControlsDecisions.md`)
+- Remap anywhere vs safe-zone-only (above).

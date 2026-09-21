@@ -2,7 +2,10 @@
 
 Inventory of what was pulled into the project, why, and what each pack contains.
 (The project targets **Unity 6000.6.0f1** with **URP 17.6.0**, so built-in-render-pipeline
-shaders will not work here.)
+shaders will not work here.) This was stuff with unity, so I'm not sure how much it will apply in game.
+I think a lot of the asset packages will need to be different as we are using godot instead of unity.
+
+This is not what is current, so do not take much stock of this. We will be probably be replacing most of this.
 
 ## Unity packages (`Packages/manifest.json`)
 | Package | Version | Use |
@@ -24,6 +27,11 @@ ui, uielements, particlesystem, audio, video, xr, etc.).
 
 ## Asset packs
 
+### PolyOne — Free Stickman — in use
+- `Assets/PolyOne/Free Stickman/`: `Model/` (`Free Pack - Stick Man.fbx`), `Prefabs/`,
+  `Animation/` (clips + `Controler/Stickman_Controler.controller` + `Directional/`),
+  `Materials/`, `SplitMeshes/`, `Scene/`, `Texture/`.
+- This is the **player model**. See `PlayerDecisions.md`.
 ### Kenney Castle Kit — imported (CC0)
 - Source: `/mnt/c/Users/abfer/Downloads/Castle Kit by Kenney - 2pA966ztJJX`
   (SketchUp OBJ export; license **CC0**).
@@ -39,11 +47,6 @@ ui, uielements, particlesystem, audio, video, xr, etc.).
 - Status: tool written and validated offline (71 pieces, 21,877 tris); **not yet run in
   Unity / not compile-tested**.
 
-### PolyOne — Free Stickman — in use
-- `Assets/PolyOne/Free Stickman/`: `Model/` (`Free Pack - Stick Man.fbx`), `Prefabs/`,
-  `Animation/` (clips + `Controler/Stickman_Controler.controller` + `Directional/`),
-  `Materials/`, `SplitMeshes/`, `Scene/`, `Texture/`.
-- This is the **player model**. See `PlayerDecisions.md`.
 
 ### ithappy — Fantasy_FREE
 - `Assets/ithappy/Fantasy_FREE/`: `Materials/`, `Meshes/` (41), `Prefabs/` (41),

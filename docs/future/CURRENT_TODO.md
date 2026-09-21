@@ -2,41 +2,26 @@
 
 ## Bugs
 ### Player Model
-#### General Model
-When I walk around and turn, the camera should stay in front of the player model's face. Its in front, so if you look down, you don't see through the stickman model. When you rotate, the stickman model should rotate, and the camera should stay in front of the model's face.
-What happens right now:
-- When looking straight down, the model is looking through the chest/torso, and so the feet aren't visible.
-- When turning, you can eventually turn 180 degrees to look at the player model.
-    - the model is rotating, but the camera stays where it is.
-What should happen:
-- Looking down, i should see my arms, legs, and maybe my chest
-- When turning, the camera should stay in front of the model's face the whole time
 #### Swimming Model
 The swimming model suffers from the same rotation issue. Specifically with the swimming model, the model rotation is not what we want it to. The animation is not angled correctly. when underwater the movement of the model isn't as desired, and the field of view is too far when looking down
 What happens right now:
-- On the surface, the swimming animation looks like it is simply keeping treading water
-    - When on the surface and swimming forward, the body shape is upright.
+- Currently we have 2 modes of camera that we can quick toggle for being able to see the model
+    - turn Current on for Player/Head/Camera3D and off for DebugChaseCamera_REMOVE_ME.
+- On the surface, the swimming animation looks strange
+    - when swimming forward, the head of the model flips back and forth and ends up folded
+    - When on the surface and swimming sideways, the head of the model is underwater.
     - When on the surface and swimming sideways or diagonal, the model is upright.
-- When underwater, the model's body is 90 degrees from camera angle
-- the field of view is incorrect underwater
-    - when underwater I can pan up and look all the way behind me
-    - When underwater I can pan down and look all the way to my feet
-- Its hard to stay on the surface swimming.
+- will need to deal with camera later
 What should happen
 - When moving on the water's surface, the body of the model should be angled.
     - when swimming forward, the model should be leading with their head with a breast stroke animation
     - When going to the side, the model should tilt somewhere between 40 and 45 degree angle
     - When going backwards the model should tilt somewhere between a 30 and 35 degree angle
     - When moving diagonally, combine the model change from forward/backward movement with that of the sideways movement model
-    - The camera should stay in front of the model's face the whole time
-- When moving under the surface the model's body should be fully behind camera 
-    - The direction of the model's body be behind the head at a slight angle (currently perpendicular)
-    - The Model's body should always be directed to be behind the camera.
-    - Idle animation underwater should be oriented in the same way
-- Underwater field of view
-    - I should not be able to look at my feet by panning up or down
-    - the most vertical I should be able to look is directly up and directly down
-- To initiate a dive, you should need to be looking down at least 10 or 15 degrees
+    - The camera should stay in front of the model's face the whole time]
+- tbd upon camera testing.
+- We may want to change the calculation of the model to be around the head, as that is where the camera is.
+    - this may have larger implications on refactoring.
 ### Land Movement
 We need to implement a slip mechanic so that players get up steep slopes just by jumping.
 ### Water

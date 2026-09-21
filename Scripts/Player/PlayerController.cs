@@ -13,8 +13,9 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float SwimSpeed = 3f;
     [Export] public float SurfaceSwimSpeed = 5f;
     [Export] public float SwimAcceleration = 8f;
-    [Export] public float SurfaceHeadHeight = 0.4f;
+    [Export] public float SurfaceHeadHeight = 0.1f;
     [Export] public float DiveDelay = 0.25f;
+    [Export] public float DiveLookDownDeg = 25f;
     [Export] public float SurfaceSpring = 10f;
     [Export] public float SurfaceDamping = 6f;
     [Export] public float SubmergedThreshold = 0.15f;
@@ -33,7 +34,7 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float AnimBlend = 0.15f;
     [Export] public float SwimVigorousSpeed = 2.2f;
     [Export] public float SwimStrokeBlend = 4f;
-    [Export] public float MaxSwimForwardPitchDeg = 70f;
+    [Export] public float MaxSwimForwardPitchDeg = 40f;
     [Export] public float MaxSwimStrafeRollDeg = 45f;
     [Export] public float SwimLeanSpeed = 60f;
     [Export] public float BodyPitchSpeed = 360f;
@@ -50,6 +51,7 @@ public partial class PlayerController : CharacterBody3D
     private float _jumpScale = 1f;
     private float _jumpClipLength;
     private float _restHeight = 0.9f;
+    private float _restHeadHeight = 1.45f;
     private float _leanRoll;
     private float _leanPitch;
     private float _bodyPitch;
@@ -66,6 +68,7 @@ public partial class PlayerController : CharacterBody3D
     public bool IsUnderwater { get; private set; }
     public bool IsWading { get; private set; }
     public Vector2 SwimLeanDeg => new Vector2(_leanPitch, _leanRoll);
+    public float LeanPitchRad => _leanPitch;
     public float BodyPitch => _bodyPitch;
 
     public override void _Ready()
@@ -79,6 +82,10 @@ public partial class PlayerController : CharacterBody3D
         CapsuleShape3D capsule = (GetNodeOrNull<CollisionShape3D>("CollisionShape3D")?.Shape) as CapsuleShape3D;
         if (capsule != null)
             _restHeight = capsule.Height * 0.5f;
+
+        float measuredHead = _HeadBoneHeight();
+        if (measuredHead > 0.1f)
+            _restHeadHeight = measuredHead;
 
         if (_anim != null)
         {
@@ -121,10 +128,10 @@ public partial class PlayerController : CharacterBody3D
     private void UpdateBodyPitch(Vector2 input, float dt)
     {
         float target = 0f;
-        if (IsSwimming && !IsWading)
+        if (IsSwimming && !IsWading && IsUnderwater)
         {
             if (_camera is CameraController cc)
-                target = cc.LookPitch;
+                target = cc.LookPitch - Mathf.DegToRad(90f);
         }
         _bodyPitch = Mathf.MoveToward(_bodyPitch, target, Mathf.DegToRad(BodyPitchSpeed) * dt);
     }
@@ -292,7 +299,7 @@ public partial class PlayerController : CharacterBody3D
 
             _horizontalVelocity = _horizontalVelocity.MoveToward(dirH * SurfaceSwimSpeed, SwimAcceleration * dt);
 
-            bool diveHold = input.Y > 0f && camForward.Y < -0.05f;
+            bool diveHold = input.Y > 0f && camForward.Y < -Mathf.Sin(Mathf.DegToRad(DiveLookDownDeg));
             if (diveHold)
                 _diveCharge += dt;
             else
@@ -305,8 +312,8 @@ public partial class PlayerController : CharacterBody3D
             }
             else
             {
-                float eyeToBody = _HeadBoneHeight();
-                float targetY = WaterSurfaceY + SurfaceHeadHeight - eyeToBody;
+                float headDip = _restHeadHeight * (1f - Mathf.Cos(_leanPitch));
+                float targetY = WaterSurfaceY + SurfaceHeadHeight - _restHeadHeight + headDip;
                 float displacement = targetY - GlobalPosition.Y;
                 float accel = displacement * SurfaceSpring - _verticalVelocity * SurfaceDamping;
                 _verticalVelocity = Mathf.Clamp(_verticalVelocity + accel * dt, -MaxSwimVerticalSpeed, MaxSwimVerticalSpeed);

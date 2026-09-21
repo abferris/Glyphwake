@@ -1,8 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://Scripts/Player/PlayerController.cs" id="1_player"]
 [ext_resource type="Script" path="res://Scripts/Player/CameraController.cs" id="2_camera"]
 [ext_resource type="PackedScene" path="res://Scenes/Stickman.tscn" id="3_visual"]
+[ext_resource type="Script" path="res://Scripts/Player/DebugChaseCamera.cs" id="4_debug"]
+[ext_resource type="Script" path="res://Scripts/Player/SurfaceSwimPose.cs" id="5_pose"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.4
@@ -21,3 +23,15 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
 
 [node name="Camera3D" type="Camera3D" parent="Head"]
 script = ExtResource("2_camera")
+
+; ===== DEBUG VIEW — to remove: delete this node (and this comment) and Scripts/Player/DebugChaseCamera.cs =====
+[node name="DebugChaseCamera_REMOVE_ME" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.9398, 0.3417, 0, -0.3417, 0.9398, 2.2, 2.6, 3.4)
+fov = 45.0
+near = 0.1
+current = true
+script = ExtResource("4_debug")
+
+; ===== SURFACE SWIM HEAD LIFT — to remove: delete this node (and both comments) and Scripts/Player/SurfaceSwimPose.cs =====
+[node name="SurfaceSwimPose" type="SkeletonModifier3D" parent="Visual/Skeleton3D"]
+script = ExtResource("5_pose")

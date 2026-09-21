@@ -1,6 +1,6 @@
 # Project Worklog — Glyphwake
 
-Documentation of work done so far on this Unity project. Last updated: 2026-09-17.
+Documentation of work done so far on this Unity project. Last updated: 2026-09-17. This was all before the migration to godot, and the initiation of git.
 
 ## Project Facts
 - Unity 6.6 (6000.6.0f1), URP.

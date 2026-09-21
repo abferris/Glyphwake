@@ -1,77 +1,64 @@
 # Terrain — Decisions & Design Notes
 
-Status: island exists as editable terrain tiles; layers + water volume tooling in place.
-This file covers how the terrain is built/edited (the "mapping" work). Water
-*interaction* is covered separately in `SwimmingDecisions.md`.
+Status: island exists as a **Terrain3D** island, generated from a noise heightmap with
+stylized flat-color layers and a water volume. This file covers how terrain is built/edited
+(the "mapping" work). Water *interaction* is covered separately in `ControlsDecisions.md`.
 
-## World scale / layout
-- One island, roughly a 300 m radius, with terrain rising to about 169 m and a sea
-  floor about 20 m below sea level around the edges (see `GAME.md`).
-- The terrains are lifted so their base sits at **y = 50**; the water plane is at
-  **y = 55**, which is what reads as sea level in the scene.
+World-space facts come from `Scenes/World.tscn` (Godot 4.7, C#):
+
+| Thing | Value |
+|-------|-------|
+| Terrain node | `Terrain3D` (from the `terrain_3d` addon) |
+| Terrain assets | `res://Assets/Terrain/island_assets.tres` |
+| Terrain data dir | `res://Assets/Terrain/island_data` |
+| Terrain size | one 9000×9000 region, `vertex_spacing = 1.953125` |
+| Water surface | a `MeshInstance3D` plane at **y = 80** (teal transparent Standard material) |
+| Water volume | `WaterZone` `Area3D` (script `Scripts/World/WaterZone.cs`) at y = 80 |
+| Player spawn | `Scenes/Player.tscn`, spawned at ~(1000, 88, -1130) |
+
+This replaces the old Unity-era terrain file (which described `Assets/Terrain/`,
+`TerrainData` tile assets, and Unity menu tools) — that project is gone. See
+`docs/future/OUTDATED.md` and `docs/past/WORKLOG-09-20-2026.md`.
 
 ## How the terrain is made (history + decision)
-- It was originally produced by an automatic island generator
-  (`IslandGenerator.cs` + `IslandGeneratorWindow.cs`, menu `Tools > Island Generator...`).
-  That built a **4x4 grid of 250x250 tiles** with `heightmapResolution = 513`.
-  The generator and its window have since been **deleted**.
-- **Decision:** the island is now kept as authored/editable terrain tiles rather than
-  regenerated on demand. The tiles live under `Assets/Terrain/` as `Tile_*.asset`
-  (`TerrainData`) — currently **391 tile assets**.
-- The old generator had a seam bug caused by `[y, x]` indexing of the tile grid, which is
-  why a dedicated stitch tool exists (below).
-- Cleanup note: there are also **48 `TerrainData_*.asset` files loose at the `Assets/`
-  root** plus a few `New Terrain*.asset` / `NewBrush*.brush` / `NewLayer*.terrainlayer`
-  scratch assets. These are older/scratch data and are not referenced by the scene.
+- The island was originally authored with a custom Unity island generator built from a
+  4×4 grid of 250×250 terrain tiles, which had a `[y, x]` seam bug. That project was
+  migrated to Godot and the terrain was rebuilt here as a **single Terrain3D island**.
+- **Decision:** terrain is now a single Terrain3D node authored in the Godot editor (and
+  via the `demo/` Terrain3D scenes), stored as heightmap data under
+  `Assets/Terrain/island_data` with a region config in `island_assets.tres`.
+- Because it's one continuous region instead of tiled `TerrainData`, the old tile **seam
+  stitching** problem no longer applies. Heightmap and LOD are handled by Terrain3D.
 
-## Seam stitching
-- Menu: `Tools > Terrain > Terrain Seam Stitch...` (`Scripts/Editor/StitchTerrainWindow.cs`).
-- It smooths the shared edges of neighbouring tiles so heights line up, so the seams
-  are invisible from above.
-- Options: **1–5 iterations**; run on **all terrains** or the current **selection**.
-- Tiles must share a matching heightmap resolution and size, otherwise they are skipped
-  with a warning in the Console.
-- Run it after any height edits that cross a tile boundary. 1–3 iterations is usually
-  enough; more iterations smear more of the surrounding height into the seam.
-
-## Surface painting (layers)
-- Menu: `Tools > Terrain > Create Stylized Terrain Layers`
-  (`Scripts/Editor/CreateTerrainLayers.cs`).
-- It creates four **flat-color URP/Lit** materials in `Assets/Materials/TerrainLayers`:
-
-  | Layer | Color (RGB)          |
-  |-------|----------------------|
-  | Grass | 0.42, 0.62, 0.32     |
-  | Sand  | 0.82, 0.75, 0.55     |
-  | Dirt  | 0.52, 0.40, 0.28     |
-  | Rock  | 0.45, 0.44, 0.42     |
-
-- Flat colors (no textures) are deliberate — they match the low-poly art style, where
-  realistic/PBR textures are rejected as too detailed (see `GAME.md`).
-- Paint them with Unity's terrain **Paint Texture** tool. The `NewLayer*.terrainlayer`
-  assets loose at the `Assets/` root are scratch, not the real set.
-- The old `WORKLOG.md` said these layers had not been created; they now exist, so that
-  note is out of date.
+## Surface painting (layers / materials)
+- Terrain3D paints depth/height/color onto the island using **maps** generated from
+  sub-resources in `island_assets.tres`: a `FastNoiseLite` height noise, a `Gradient`
+  color ramp, and a `NoiseTexture2D` for macro variation.
+- The look is flat layers of beige/earth tones — deliberately **flat color, no PBR
+  textures**, matching the low-poly art style (see `GAME.md`).
+- Terrain material: `Terrain3DMaterial` via the addon's autoshader; texture maps are
+  baked/buildable with the addon's importer (`Tools > Terrain3D`).
 
 ## Water placement / volume
-- The water is the scene's **`Water` plane** with a transparent teal URP/Lit material at
-  **y = 55**. Per current direction the material must **not** be altered.
-- Menu: `Tools > Terrain > Set Up Water Zone`
-  (`Scripts/Editor/SwimSetupTool.cs`). Run it **once**, then **save the scene**.
-  It removes the solid `MeshCollider`, turns the `BoxCollider` into a deep trigger
-  (200 world units) whose top face is the surface, and adds the `WaterZone` component
-  that records the world-space surface Y.
-- Menu location note: this used to be under `Tools > Player`; it now lives under
-  `Tools > Terrain` so all terrain setup is together.
+- The water is the scene's **`Water`** `MeshInstance3D` plane at **y = 80** with a
+  transparent teal `StandardMaterial3D`. The material should **not** be altered.
+- Script: `Scripts/World/WaterZone.cs` — an `Area3D` trigger zone over the water volume.
+  It reports the world-space **surface Y (`WaterSurfaceY = 80.0`)** and calls
+  `EnterWater(float)` / `ExitWater()` on entering `PlayerController`s, re-asserting on
+  stay so spawning inside the volume still works.
+- Water interaction (swimming, diving, wading) is driven by the player controller — see
+  `PlayerDecisions.md` and `ControlsDecisions.md`.
 
 ## Player placement
-- Menu: `Tools > Place Player at Coordinates...`
-  (`Scripts/Editor/PlacePlayerWindow.cs`).
-- Finds the object named **`Player`** and drops it onto the terrain at the typed X/Z
-  using `Terrain.SampleHeight`, so you can spawn at a landmark without flying there.
+- The player is `res://Scenes/Player.tscn` (a `CharacterBody3D` with `PlayerController`
+  + head-anchored `CameraController`), instance-placed in `World.tscn` at roughly
+  (1000, 88, -1130). Start in the editor by opening `Scenes/World.tscn` and pressing
+  **Play**. Editor tool scripts in `Scripts/Editor/` (if present) handle authoring-only
+  helpers; runtime movement/camera/swim live in `Scripts/Player/` / `Scripts/World/`.
 
 ## Gotchas
-- Terrains are all at base **y = 50**; the water surface is **y = 55**; the player spawns
-  at approximately **(50, 59.62, -1025)**.
-- A tile and its `.meta` file are large (~549 KB each). Do not enumerate the whole
-  `Assets/Terrain/` folder in logs; see `PROJECT_TREE.md` for the summarized listing.
+- The old docs wrote water at **y = 55** and player at y ≈ 59.6 — those numbers were from
+  the Unity scene. The Godot scene uses the water plane at **y = 80** and the player
+  spawning above it at y ≈ 88cars.
+- Terrain region+data files live under `Assets/Terrain/` (see `PROJECT_TREE.md`);
+  `demo/` holds the Terrain3D learning demo (nodes, navigation, baking).
