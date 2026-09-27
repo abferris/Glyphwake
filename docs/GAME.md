@@ -4,7 +4,7 @@
 
 ## Concept
 
-A RuneScape-like 3D open-world island game with a stylized, low-poly aesthetic. The player explores a hand-crafted island, navigating from a first-person camera perspective.
+A RuneScape-like 3D open-world island game in first person with a stylized, low-poly aesthetic. The player explores a hand-crafted island, navigating from a first-person camera perspective. Acquire skills, Compete against others.
 
 ## World
 

@@ -149,7 +149,6 @@ independent of its school, target, shape, and cast/effect time. Element is optio
     - typically more damage
     - less effected by gravity (straighter skill shots)
     - damage over time
-
 - Aqua
   - analogous elements
     - water + ice 

@@ -97,6 +97,25 @@ swim animations wired via tooling (pending in-editor playtest).
   the ground, the body is pushed straight up until it clears. The camera also has a sphere-cast
   probe (`CameraPivot` -> eye) as a backstop for walls; water triggers are ignored either way.
 
+## Surface lean & head (Session 4)
+NOTE: supersedes the earlier "at the surface the body stays upright and only yaws" note above.
+- At the surface the *body* leans, not just yaws: pressing W pitches the body forward up to
+  `maxSwimForwardPitchDeg` (40) and strafing rolls it up to `maxSwimStrafeRollDeg` (45), both
+  eased with `swimLeanSpeed`. **Vertical camera aim no longer rotates the model** — only
+  horizontal yaw does (the camera-pitch `lookDown` coupling was removed).
+- The lean is rotated about the `Head` bone (`_visual.Position = headInBody − R·headPivot`),
+  so the head keeps its world position while the body swings below it. This is the failed
+  Attempt C pivot, now completed by a head leveler (below).
+- A `SkeletonModifier3D` (`Scripts/Player/SurfaceSwimPose.cs`, node `Visual/Skeleton3D/
+  SurfaceSwimPose`) cancels the lean on the `Head` bone each pass by writing the live
+  world-level pose `playerBasis · flipY · headBonePose` back with `SetBoneGlobalPose`
+  (NOT the deprecated `SetBoneGlobalPoseOverride` — see WORKLOG Session 4). Skeleton3D rolls
+  the modified pose back after skinning, so the write never accumulates. The head stays level
+  and faces forward while the body pitches/rolls below — forward swim stays head-first, strafe
+  tilt doesn't submerge the head.
+- Consequence: `SimulateSwim`'s surface float no longer needs the `headDip` lift; it floats the
+  body origin so the head sits `surfaceHeadHeight` above the water while idle/level.
+
 ## Implementation notes
 - WaterZone is a trigger volume; it calls PlayerController.EnterWater/ExitWater and reports
   waterSurfaceY. It re-asserts on stay, so spawning inside the volume still works.

@@ -85,7 +85,7 @@ public partial class CameraController : Camera3D
 		{
 			Position = new Vector3(0f, _currentLift, -FaceReach);
 		}
-
+	
 		if (_headBone >= 0 && _body != null)
 			Rotation = new Vector3(_pitch - bodyPitch, 0f, 0f);
 		else

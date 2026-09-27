@@ -13,7 +13,8 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float SwimSpeed = 3f;
     [Export] public float SurfaceSwimSpeed = 5f;
     [Export] public float SwimAcceleration = 8f;
-    [Export] public float SurfaceHeadHeight = 0.1f;
+    [Export] public float SurfaceHeadHeight = 0f;
+    [Export] public float SurfaceHeadBob = 0.05f;
     [Export] public float DiveDelay = 0.25f;
     [Export] public float DiveLookDownDeg = 25f;
     [Export] public float SurfaceSpring = 10f;
@@ -34,6 +35,8 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float AnimBlend = 0.15f;
     [Export] public float SwimVigorousSpeed = 2.2f;
     [Export] public float SwimStrokeBlend = 4f;
+    [Export] public float TreadSpeedThreshold = 0.6f;
+    [Export] public float TreadBlend = 0.3f;
     [Export] public float MaxSwimForwardPitchDeg = 40f;
     [Export] public float MaxSwimStrafeRollDeg = 45f;
     [Export] public float SwimLeanSpeed = 60f;
@@ -50,17 +53,21 @@ public partial class PlayerController : CharacterBody3D
     private float _swimStrokeSpeed = 1f;
     private float _jumpScale = 1f;
     private float _jumpClipLength;
-    private float _restHeight = 0.9f;
+    private float _restHeight = 0.895f;
     private float _restHeadHeight = 1.45f;
+    private float _headLocalY = 1.45f;
     private float _leanRoll;
     private float _leanPitch;
     private float _bodyPitch;
     private Node3D _head;
     private Node3D _visual;
+    private Vector3 _visualRestPosition = Vector3.Zero;
     private Skeleton3D _skeleton;
+    private int _headBone = -1;
     private Camera3D _camera;
     private AnimationPlayer _anim;
     private string _clip = "";
+    private float _clipOffset = -1f;
 
     public bool IsGrounded => IsOnFloor();
     public bool IsSwimming { get; private set; }
@@ -69,6 +76,7 @@ public partial class PlayerController : CharacterBody3D
     public bool IsWading { get; private set; }
     public Vector2 SwimLeanDeg => new Vector2(_leanPitch, _leanRoll);
     public float LeanPitchRad => _leanPitch;
+    public float LeanRollRad => _leanRoll;
     public float BodyPitch => _bodyPitch;
 
     public override void _Ready()
@@ -77,15 +85,24 @@ public partial class PlayerController : CharacterBody3D
         _camera = GetNodeOrNull<Camera3D>("Head/Camera3D");
         _anim = GetNodeOrNull<AnimationPlayer>("Visual/Anim");
         _visual = GetNodeOrNull<Node3D>("Visual");
+        if (_visual != null)
+            _visualRestPosition = _visual.Position;
         _skeleton = GetNodeOrNull<Skeleton3D>("Visual/Skeleton3D");
+        if (_skeleton != null)
+        {
+            _headBone = _skeleton.FindBone("Head");
+        }
 
-        CapsuleShape3D capsule = (GetNodeOrNull<CollisionShape3D>("CollisionShape3D")?.Shape) as CapsuleShape3D;
+        CollisionShape3D shapeNode = GetNodeOrNull<CollisionShape3D>("CollisionShape3D");
+        CapsuleShape3D capsule = shapeNode?.Shape as CapsuleShape3D;
         if (capsule != null)
-            _restHeight = capsule.Height * 0.5f;
+            _restHeight = capsule.Height * 0.5f - shapeNode.Position.Y;
 
         float measuredHead = _HeadBoneHeight();
         if (measuredHead > 0.1f)
             _restHeadHeight = measuredHead;
+
+        _headLocalY = _restHeadHeight;
 
         if (_anim != null)
         {
@@ -142,17 +159,40 @@ public partial class PlayerController : CharacterBody3D
         float targetPitch = 0f;
         if (IsSwimming && !IsWading && !IsUnderwater)
         {
-            float lookDown = 0f;
-            if (_camera is CameraController cc)
-                lookDown = Mathf.Clamp((Mathf.RadToDeg(-cc.LookPitch) - 10f) / 15f, 0f, 1f);
             targetRoll = input.X * MaxSwimStrafeRollDeg;
-            targetPitch = Mathf.Clamp(input.Y, 0f, 1f) * MaxSwimForwardPitchDeg * (1f - lookDown);
+            targetPitch = Mathf.Clamp(input.Y, 0f, 1f) * MaxSwimForwardPitchDeg;
         }
         _leanRoll = Mathf.MoveToward(_leanRoll, targetRoll, SwimLeanSpeed * dt);
         _leanPitch = Mathf.MoveToward(_leanPitch, targetPitch, SwimLeanSpeed * dt);
         if (_visual == null)
             return;
+
         _visual.Rotation = new Vector3(Mathf.DegToRad(_leanPitch), Mathf.Pi, Mathf.DegToRad(_leanRoll));
+
+        bool surfaceSwim = IsSwimming && !IsWading && !IsUnderwater;
+        if (!surfaceSwim || _headBone < 0)
+        {
+            _visual.Position = _visualRestPosition;
+            return;
+        }
+
+        // Pivot the surface-swim lean around the head so the head leads and the body angles
+        // behind it. The pivot is the head bone's *animated* position, so the clip's own head
+        // motion is preserved while the lean itself no longer displaces the head (which used
+        // to swing it under the waterline).
+        //
+        // The vertical component is pinned to a fixed player-space anchor rather than to the
+        // previous frame's height. Pinning to the previous frame only re-anchors, so the clip's
+        // integrated head bob still leaked through and the float spring -- which runs a frame
+        // earlier -- could only cancel it late, leaving the head swinging around the waterline.
+        // Pinning the height lets the visual absorb the stroke's bob, so the head holds a
+        // steady height above the water while the hips and feet take the bob.
+        Vector3 headPose = _skeleton.GetBoneGlobalPose(_headBone).Origin;
+        Vector3 headInVisual = _skeleton.Transform * headPose;
+        Vector3 headInPlayer = GlobalTransform.AffineInverse() * (_skeleton.GlobalTransform * headPose);
+        Vector3 anchor = headInPlayer;
+        anchor.Y = _headLocalY + Mathf.Clamp(headInPlayer.Y - _headLocalY, -SurfaceHeadBob, SurfaceHeadBob);
+        _visual.Position = anchor - _visual.Basis * headInVisual;
     }
 
     private void UpdateAnimation(Vector2 input, float dt)
@@ -163,14 +203,26 @@ public partial class PlayerController : CharacterBody3D
         float speed = _horizontalVelocity.Length() + _impulseVelocity.Length();
         string clip;
         float scale = 1f;
+        bool reversed = false;
+        float offset = 0f;
 
         if (IsSwimming && !IsWading)
         {
-            clip = "Swimming Loop";
-            float activity = Mathf.Clamp(input.Length(), 0f, 1f);
-            float target = Mathf.Lerp(1f, SwimVigorousSpeed, activity);
-            _swimStrokeSpeed = Mathf.MoveToward(_swimStrokeSpeed, target, SwimStrokeBlend * dt);
-            scale = _swimStrokeSpeed;
+            bool treading = !IsUnderwater && _horizontalVelocity.Length() < TreadSpeedThreshold;
+            if (treading)
+            {
+                clip = "Swim Tread";
+                _swimStrokeSpeed = 1f;
+                scale = 1f;
+            }
+            else
+            {
+                clip = "Swimming Loop";
+                float activity = Mathf.Clamp(input.Length(), 0f, 1f);
+                float target = Mathf.Lerp(1f, SwimVigorousSpeed, activity);
+                _swimStrokeSpeed = Mathf.MoveToward(_swimStrokeSpeed, target, SwimStrokeBlend * dt);
+                scale = _swimStrokeSpeed;
+            }
         }
         else if (!IsOnFloor())
         {
@@ -192,17 +244,37 @@ public partial class PlayerController : CharacterBody3D
         {
             bool running = speed >= WalkRunThreshold;
             clip = DirectionalClip(running ? "Run" : "Walk", input);
+            reversed = clip.Contains("Backward");
+            if (reversed)
+            {
+                clip = clip.Replace("Backward", "Forward");
+                if (clip.Contains("Left"))
+                    clip = clip.Replace("Left", "Right");
+                else if (clip.Contains("Right"))
+                    clip = clip.Replace("Right", "Left");
+            }
+            else if (!running && clip == "Walk Diagonal Forward Right")
+            {
+                Animation anim = _anim.GetAnimation(clip);
+                if (anim != null)
+                    offset = (float)anim.Length * 0.5f;
+            }
             scale = running
                 ? Mathf.Clamp(speed / RunAnimSpeed, MinAnimScale, MaxAnimScale)
                 : Mathf.Clamp(speed / WalkAnimSpeed, MinAnimScale, MaxAnimScale);
         }
 
-        _anim.SpeedScale = scale;
-        if (clip == _clip)
+        _anim.SpeedScale = reversed ? -scale : scale;
+        if (clip == _clip && offset == _clipOffset)
             return;
 
+        // prone swim <-> upright tread is a large pose change, so give it a longer blend
+        float blend = (clip == "Swim Tread" || _clip == "Swim Tread") ? TreadBlend : AnimBlend;
         _clip = clip;
-        _anim.Play(clip, AnimBlend);
+        _clipOffset = offset;
+        _anim.Play(clip, blend);
+        if (offset > 0f)
+            _anim.Seek(offset, true);
     }
 
     private float PredictAirTime()
@@ -312,8 +384,11 @@ public partial class PlayerController : CharacterBody3D
             }
             else
             {
-                float headDip = _restHeadHeight * (1f - Mathf.Cos(_leanPitch));
-                float targetY = WaterSurfaceY + SurfaceHeadHeight - _restHeadHeight + headDip;
+                // keep the head at a fixed height above the surface. _headLocalY is the
+                // head's current height in player space (it tracks the clip and the lean
+                // pivot), so this holds the head steady above water while the body angles
+                // behind it around the head pivot.
+                float targetY = WaterSurfaceY + SurfaceHeadHeight - _headLocalY;
                 float displacement = targetY - GlobalPosition.Y;
                 float accel = displacement * SurfaceSpring - _verticalVelocity * SurfaceDamping;
                 _verticalVelocity = Mathf.Clamp(_verticalVelocity + accel * dt, -MaxSwimVerticalSpeed, MaxSwimVerticalSpeed);
@@ -351,6 +426,7 @@ public partial class PlayerController : CharacterBody3D
         }
         return _head != null ? Mathf.Max(0.1f, _head.GlobalPosition.Y - GlobalPosition.Y) : 1.6f;
     }
+
 
     private void UpdateSubmersion()
     {

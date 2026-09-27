@@ -39,7 +39,11 @@ func _process(_delta: float) -> bool:
 			var b := skel.find_bone("Head")
 			if b >= 0:
 				bone_h = (skel.global_transform * skel.get_bone_global_pose(b)).origin.y - player.global_position.y
-		var want_body: float = zone.WaterSurfaceY + 0.4 - bone_h
+		# The float is head-referenced: it holds the head bone SurfaceHeadHeight above the
+		# surface, so the body settles at water + clearance - head height. Derive the
+		# expectation from the export instead of hardcoding it.
+		var want_body: float = zone.WaterSurfaceY + player.SurfaceHeadHeight - bone_h
+		var head_y: float = player.global_position.y + bone_h
 		print("FINAL body_y=", snappedf(player.global_position.y, 0.01), " eye_y=", snappedf(camera.global_position.y, 0.01),
 			" swim=", player.IsSwimming, " under=", player.IsUnderwater)
 		print("expected body_y=", want_body, " head_bone_h=", snappedf(bone_h, 0.001),
@@ -53,6 +57,10 @@ func _process(_delta: float) -> bool:
 			failed = true
 		if absf(player.global_position.y - want_body) > 0.15:
 			printerr("FAIL: expected to float at body_y≈", want_body, ", got ", player.global_position.y)
+			failed = true
+		# the head is the pivot and must stay above the surface, allowing for the clip bob
+		if head_y < zone.WaterSurfaceY:
+			printerr("FAIL: the head is below the surface (", head_y, " < ", zone.WaterSurfaceY, ")")
 			failed = true
 		if camera.global_position.y < zone.WaterSurfaceY:
 			printerr("FAIL: the eye is below the surface (", camera.global_position.y, " < ", zone.WaterSurfaceY, ")")

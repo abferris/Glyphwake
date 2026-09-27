@@ -7,13 +7,14 @@
 [ext_resource type="Script" path="res://Scripts/Player/SurfaceSwimPose.cs" id="5_pose"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
-radius = 0.4
-height = 1.8
+radius = 0.2
+height = 1.79
 
 [node name="Player" type="CharacterBody3D"]
 script = ExtResource("1_player")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.006, 0)
 shape = SubResource("CapsuleShape3D_body")
 
 [node name="Visual" parent="." instance=ExtResource("3_visual")]
@@ -32,6 +33,6 @@ near = 0.1
 current = true
 script = ExtResource("4_debug")
 
-; ===== SURFACE SWIM HEAD LIFT — to remove: delete this node (and both comments) and Scripts/Player/SurfaceSwimPose.cs =====
+; ===== SURFACE SWIM POSE — levels the head and holds both hands just below the waterline (ArmSubmersion) while swimming at the surface =====
 [node name="SurfaceSwimPose" type="SkeletonModifier3D" parent="Visual/Skeleton3D"]
 script = ExtResource("5_pose")
