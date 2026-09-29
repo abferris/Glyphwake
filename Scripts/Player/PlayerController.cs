@@ -22,9 +22,14 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float SubmergedThreshold = 0.15f;
     [Export] public float SurfaceHysteresis = 0.1f;
     [Export] public float MaxSwimVerticalSpeed = 4f;
-    [Export(PropertyHint.Range, "0.1,1,0.05")] public float WadeSpeedFactor = 0.5f;
+    [Export(PropertyHint.Range, "0.1,1,0.05")] public float WadeMinSpeedFactor = 0.5f;
+    [Export(PropertyHint.Range, "0.25,4,0.05")] public float WadeDragExponent = 1.5f;
     [Export] public float WadeDepth = 2f;
-    [Export] public float CameraFloorClearance = 0.4f;
+    // Fraction of the feet-to-head span that has to be under before the water takes over. This
+    // is the one knob for "submerged to the neck": it starts the float that slows the fall and
+    // the swim clip together, so the buoyancy and the animation can never disagree about when
+    // the character counts as being in the water.
+    [Export(PropertyHint.Range, "0,1,0.05")] public float FloatEngageDepth = 0.7f;    [Export] public float CameraFloorClearance = 0.4f;
 
     [Export] public float IdleSpeed = 0.2f;
     [Export] public float WalkRunThreshold = 6f;
@@ -74,6 +79,13 @@ public partial class PlayerController : CharacterBody3D
     public float WaterSurfaceY { get; private set; }
     public bool IsUnderwater { get; private set; }
     public bool IsWading { get; private set; }
+    public float WadeSubmersion { get; private set; }
+    // Submerged to the neck. The water zone reaches above the waterline, so being inside the zone
+    // only means the body is over the water, not in it: leaping off a ledge puts you in the zone
+    // while still in mid-air. Everything that switches the character into a swimming *look* --
+    // the swim clip, the swim lean, the surface-swim head pin -- waits on this instead, so a jump
+    // into the water keeps its fall and its jump animation until the body is actually submerged.
+    public bool AtSwimDepth { get; private set; }
     public Vector2 SwimLeanDeg => new Vector2(_leanPitch, _leanRoll);
     public float LeanPitchRad => _leanPitch;
     public float LeanRollRad => _leanRoll;
@@ -122,10 +134,12 @@ public partial class PlayerController : CharacterBody3D
         if (IsSwimming)
         {
             UpdateSubmersion();
+            UpdateWadeSubmersion();
+            UpdateSwimDepth();
             bool shallow = WaterSurfaceY - GroundHeightUnder(GlobalPosition) < WadeDepth;
             IsWading = !IsUnderwater && (IsOnFloor() || shallow);
             if (IsWading)
-                SimulateGround(input, dt, WadeSpeedFactor);
+                SimulateGround(input, dt, WadeSpeedFactor());
             else
                 SimulateSwim(input, dt);
         }
@@ -133,6 +147,7 @@ public partial class PlayerController : CharacterBody3D
         {
             IsUnderwater = false;
             IsWading = false;
+            AtSwimDepth = false;
             SimulateGround(input, dt, 1f);
         }
 
@@ -157,7 +172,7 @@ public partial class PlayerController : CharacterBody3D
     {
         float targetRoll = 0f;
         float targetPitch = 0f;
-        if (IsSwimming && !IsWading && !IsUnderwater)
+        if (IsSwimming && !IsWading && !IsUnderwater && AtSwimDepth)
         {
             targetRoll = input.X * MaxSwimStrafeRollDeg;
             targetPitch = Mathf.Clamp(input.Y, 0f, 1f) * MaxSwimForwardPitchDeg;
@@ -169,7 +184,7 @@ public partial class PlayerController : CharacterBody3D
 
         _visual.Rotation = new Vector3(Mathf.DegToRad(_leanPitch), Mathf.Pi, Mathf.DegToRad(_leanRoll));
 
-        bool surfaceSwim = IsSwimming && !IsWading && !IsUnderwater;
+        bool surfaceSwim = IsSwimming && !IsWading && !IsUnderwater && AtSwimDepth;
         if (!surfaceSwim || _headBone < 0)
         {
             _visual.Position = _visualRestPosition;
@@ -206,7 +221,7 @@ public partial class PlayerController : CharacterBody3D
         bool reversed = false;
         float offset = 0f;
 
-        if (IsSwimming && !IsWading)
+        if (IsSwimming && !IsWading && (IsUnderwater || AtSwimDepth))
         {
             bool treading = !IsUnderwater && _horizontalVelocity.Length() < TreadSpeedThreshold;
             if (treading)
@@ -384,14 +399,24 @@ public partial class PlayerController : CharacterBody3D
             }
             else
             {
-                // keep the head at a fixed height above the surface. _headLocalY is the
-                // head's current height in player space (it tracks the clip and the lean
-                // pivot), so this holds the head steady above water while the body angles
-                // behind it around the head pivot.
+                // A plunge is not a swim. The float only blends in once the body is mostly
+                // under -- FloatEngageDepth of the feet-to-head span, i.e. the treading-water
+                // depth -- and the fall limit opens up again to MaxFallSpeed while it is not,
+                // so jumping in keeps falling instead of being caught at the waterline. Once
+                // the body is at or below the float target the spring takes over outright, so
+                // the tuned treading equilibrium (head on the waterline, since
+                // targetY = surface + SurfaceHeadHeight - _headLocalY) is untouched.
                 float targetY = WaterSurfaceY + SurfaceHeadHeight - _headLocalY;
                 float displacement = targetY - GlobalPosition.Y;
-                float accel = displacement * SurfaceSpring - _verticalVelocity * SurfaceDamping;
-                _verticalVelocity = Mathf.Clamp(_verticalVelocity + accel * dt, -MaxSwimVerticalSpeed, MaxSwimVerticalSpeed);
+                float band = Mathf.Max(0.01f, 1f - FloatEngageDepth);
+                float engage = Mathf.Clamp((WadeSubmersion - FloatEngageDepth) / band, 0f, 1f);
+                if (displacement >= 0f)
+                    engage = 1f;
+
+                float floatAccel = displacement * SurfaceSpring - _verticalVelocity * SurfaceDamping;
+                float accel = Mathf.Lerp(Gravity, floatAccel, engage);
+                float fallLimit = Mathf.Lerp(MaxFallSpeed, -MaxSwimVerticalSpeed, engage);
+                _verticalVelocity = Mathf.Clamp(_verticalVelocity + accel * dt, fallLimit, MaxSwimVerticalSpeed);
             }
 
             _swimVelocity = Vector3.Zero;
@@ -433,6 +458,33 @@ public partial class PlayerController : CharacterBody3D
         float depth = WaterSurfaceY - EyePosition().Y;
         float releaseDepth = Mathf.Max(0f, SubmergedThreshold - SurfaceHysteresis);
         IsUnderwater = IsUnderwater ? depth > releaseDepth : depth > SubmergedThreshold;
+    }
+
+    // Drag scales with how much of the body is under the surface, measured from the capsule
+    // bottom up to the head bone. The head bone is the same reference the treading float
+    // holds on the waterline (SurfaceHeadHeight = 0) and the same one the eye test uses to
+    // raise IsUnderwater, so the drag bottoms out exactly where swimming takes over rather
+    // than at some arbitrary wade depth.
+    private void UpdateWadeSubmersion()
+    {
+        float footY = GlobalPosition.Y - _restHeight;
+        float span = Mathf.Max(0.1f, _restHeadHeight + _restHeight);
+        WadeSubmersion = Mathf.Clamp((WaterSurfaceY - footY) / span, 0f, 1f);
+    }
+
+    private float WadeSpeedFactor()
+    {
+        return Mathf.Lerp(1f, WadeMinSpeedFactor, Mathf.Pow(WadeSubmersion, WadeDragExponent));
+    }
+
+    // Latches on at FloatEngageDepth and back off by the same hysteresis IsUnderwater uses, in
+    // span fractions rather than metres. Without it a body settling exactly at the threshold would
+    // chatter between the swim clip and the jump clip, which is a large pose change each way.
+    private void UpdateSwimDepth()
+    {
+        float span = Mathf.Max(0.1f, _restHeadHeight + _restHeight);
+        float release = Mathf.Max(0f, FloatEngageDepth - SurfaceHysteresis / span);
+        AtSwimDepth = AtSwimDepth ? WadeSubmersion > release : WadeSubmersion >= FloatEngageDepth;
     }
 
     private void KeepCameraAboveGround()
@@ -478,8 +530,8 @@ public partial class PlayerController : CharacterBody3D
         _swimVelocity = Vector3.Zero;
         _impulseVelocity = Vector3.Zero;
         _diveCharge = 0f;
-        if (_verticalVelocity < -MaxSwimVerticalSpeed)
-            _verticalVelocity = -MaxSwimVerticalSpeed;
+        // the fall speed is left alone on purpose: a plunge is a fall until the float engages
+        // (see SimulateSwim), so clamping here would kill the drop at the waterline
     }
 
     public void ExitWater()

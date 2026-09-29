@@ -10,6 +10,24 @@ var skel: Skeleton3D
 var phys_mark := 0
 var start_hand := Vector3.ZERO
 var idle_pos := Vector3.ZERO
+var surface_y := 0.0
+var surf_eye_min := INF
+var surf_eye_max := -INF
+var surf_eye_sum := 0.0
+var surf_body_max := -INF
+var surf_under := 0
+var surf_samples := 0
+
+
+func _sample_surface() -> void:
+	var cam := player.get_node("Head/Camera3D") as Camera3D
+	surf_eye_min = minf(surf_eye_min, cam.global_position.y)
+	surf_eye_max = maxf(surf_eye_max, cam.global_position.y)
+	surf_eye_sum += cam.global_position.y
+	surf_body_max = maxf(surf_body_max, player.global_position.y)
+	if player.IsUnderwater:
+		surf_under += 1
+	surf_samples += 1
 var total_frames := 0
 var failed := false
 
@@ -108,18 +126,44 @@ func _process(_delta: float) -> bool:
 				_fail("expected the stroke to speed up while moving, speed_scale=" + str(anim.speed_scale))
 			_send_key(KEY_W, false)
 			player.global_position += Vector3.UP * 3.0
-			player.EnterWater(player.global_position.y + 0.5)
+			surface_y = player.global_position.y + 0.5
+			player.EnterWater(surface_y)
+			surf_eye_min = INF
+			surf_eye_max = -INF
+			surf_eye_sum = 0.0
+			surf_body_max = -INF
+			surf_under = 0
+			surf_samples = 0
 			phys_mark = Engine.get_physics_frames()
 		8:
+			# The Swimming Loop clip swings the Head node through the stroke, so a single
+			# sampled instant can land mid-beat with the head below the waterline. Sample the
+			# whole treading window and judge the average instead of one arbitrary frame.
+			_sample_surface()
 			if Engine.get_physics_frames() - phys_mark < 90:
 				return false
 			print("SURFACE clip=", anim.current_animation, " underwater=", player.IsUnderwater,
-				" wading=", player.IsWading, " body_y=", snappedf(player.global_position.y, 0.01))
+				" wading=", player.IsWading, " body_y=", snappedf(player.global_position.y, 0.01),
+				" surface_y=", snappedf(surface_y, 0.01),
+				" sub=", snappedf(player.WadeSubmersion, 0.001),
+				" vy=", snappedf(player.velocity.y, 0.01),
+				" body_pitch=", snappedf(rad_to_deg(player.BodyPitch), 0.01),
+				" head_bone_y=", snappedf((skel.global_transform * skel.get_bone_global_pose(skel.find_bone("Head"))).origin.y, 0.01),
+				" eye min/avg/max=", snappedf(surf_eye_min, 0.01), "/", snappedf(surf_eye_sum / float(surf_samples), 0.01),
+				"/", snappedf(surf_eye_max, 0.01),
+				" underwater_frames=", surf_under, "/", surf_samples)
 			if anim.current_animation != "Swimming Loop":
 				_fail("expected Swimming Loop at the surface, got " + anim.current_animation)
-			if player.IsUnderwater or player.IsWading:
-				_fail("expected to float at the surface, underwater=" + str(player.IsUnderwater)
-					+ " wading=" + str(player.IsWading))
+			if player.IsWading:
+				_fail("expected to tread at the surface, not wade, wading=" + str(player.IsWading))
+			# treading holds the head bone on the waterline, so the eye should average at or
+			# just above it rather than sitting under
+			if surf_eye_sum / float(surf_samples) < surface_y - 0.05:
+				_fail("expected the eye to average at the waterline, got " + str(snappedf(surf_eye_sum / float(surf_samples), 0.01)) + " < " + str(snappedf(surface_y - 0.05, 0.01)))
+			if surf_under * 2 > surf_samples:
+				_fail("the eye spent " + str(surf_under) + "/" + str(surf_samples) + " frames underwater while treading")
+			if surf_body_max < surface_y - 0.2:
+				_fail("expected to tread at the surface, body never got above " + str(snappedf(surf_body_max, 0.01)))
 			player.ExitWater()
 			phys_mark = Engine.get_physics_frames()
 		9:

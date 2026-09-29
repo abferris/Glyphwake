@@ -59,8 +59,10 @@ func _process(_delta: float) -> bool:
 			printerr("FAIL: expected to float at body_y≈", want_body, ", got ", player.global_position.y)
 			failed = true
 		# the head is the pivot and must stay above the surface, allowing for the clip bob
-		if head_y < zone.WaterSurfaceY:
-			printerr("FAIL: the head is below the surface (", head_y, " < ", zone.WaterSurfaceY, ")")
+		# SurfaceHeadHeight is 0, so the float targets the head bone sitting exactly on the
+		# waterline and the stroke dips it a few mm below between beats
+		if head_y < zone.WaterSurfaceY - 0.02:
+			printerr("FAIL: the head is below the surface (", head_y, " < ", zone.WaterSurfaceY - 0.02, ")")
 			failed = true
 		if camera.global_position.y < zone.WaterSurfaceY:
 			printerr("FAIL: the eye is below the surface (", camera.global_position.y, " < ", zone.WaterSurfaceY, ")")

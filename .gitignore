@@ -1,3 +1,7 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Probe and test output
+tools/tmp_shots/
+tmp_godot.log
