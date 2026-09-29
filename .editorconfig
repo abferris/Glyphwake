@@ -2,3 +2,33 @@ root = true
 
 [*]
 charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Probe and test output
+tools/tmp_shots/
+tmp_godot.log
+tmp_glyphwake_*.log
+
+[*.cs]
+# C# convention, and the editor's default. The project was previously mixed: CameraController
+# and WaterZone were tab indented and everything else used four spaces.
+indent_style = space
+indent_size = 4
+
+# Namespaces are mandatory. The global namespace is what forced WaterTintEffect.gd to identify
+# a C# script by its *file name* rather than by its type.
+csharp_style_namespace_declarations = block_scoped:warning
+
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:warning
+
+dotnet_style_readonly_field = true:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+csharp_prefer_braces = true:warning

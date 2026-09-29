@@ -1,6 +1,8 @@
 using Godot;
 using Godot.Collections;
 
+namespace Glyphwake.Glyphs;
+
 public enum CastStyle
 {
     Projectile,

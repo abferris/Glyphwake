@@ -1,5 +1,7 @@
 using Godot;
 
+namespace Glyphwake.Glyphs;
+
 [GlobalClass]
 public partial class ScaledStat : Resource
 {
