@@ -27,6 +27,7 @@ public sealed class PlayerRig
     public const string VisualNodePath = "Visual";
     public const string SkeletonNodePath = "Visual/Skeleton3D";
     public const string AnimNodePath = "Visual/Anim";
+    public const string AnimTreeNodePath = "AnimTree";
     public const string CollisionNodePath = "CollisionShape3D";
 
     /// Fallbacks used when the scene has no skeleton to measure, so a rig built without a
@@ -54,6 +55,7 @@ public sealed class PlayerRig
     public Node3D Visual { get; }
     public Skeleton3D Skeleton { get; }
     public AnimationPlayer Anim { get; }
+    public AnimationTree AnimTree { get; }
     public Vector3 VisualRestPosition { get; }
 
     public int HeadBone { get; }
@@ -76,6 +78,7 @@ public sealed class PlayerRig
         Visual = body.GetNodeOrNull<Node3D>(VisualNodePath);
         Skeleton = body.GetNodeOrNull<Skeleton3D>(SkeletonNodePath);
         Anim = body.GetNodeOrNull<AnimationPlayer>(AnimNodePath);
+        AnimTree = body.GetNodeOrNull<AnimationTree>(AnimTreeNodePath);
 
         if (Visual != null)
             VisualRestPosition = Visual.Position;

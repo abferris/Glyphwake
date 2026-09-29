@@ -60,6 +60,7 @@ public partial class PlayerController : CharacterBody3D
     private readonly LocomotionState _state = new();
 
     private PlayerRig _rig;
+    private LocomotionGraph _graph;
     private PlayerAnimator _animator;
 
     private Vector3 _horizontalVelocity = Vector3.Zero;
@@ -90,6 +91,13 @@ public partial class PlayerController : CharacterBody3D
     public float WaterSurfaceY => _state.WaterSurfaceY;
     public float WadeSubmersion => _state.WadeSubmersion;
 
+    /// The animation state the character is playing, as a clip name, and how fast it is
+    /// playing it. Read by the GDScript tests: the AnimationTree does not populate
+    /// AnimationPlayer.current_animation or speed_scale once it is driving, so these are the
+    /// only honest way for a tool to ask what the character is doing.
+    public string AnimationState => _animator?.CurrentState ?? "";
+    public float AnimationSpeed => _animator?.PlaybackSpeed ?? 1f;
+
     public Vector2 SwimLeanDeg => new Vector2(_leanPitch, _leanRoll);
     public float LeanPitchRad => _leanPitch;
     public float LeanRollRad => _leanRoll;
@@ -98,7 +106,9 @@ public partial class PlayerController : CharacterBody3D
     public override void _Ready()
     {
         _rig = new PlayerRig(this);
-        _animator = new PlayerAnimator(_rig.Anim);
+
+        _graph = new LocomotionGraph(_rig.Anim);
+        _animator = new PlayerAnimator(_graph);
 
         _state.SubmergedThreshold = SubmergedThreshold;
         _state.SurfaceHysteresis = SurfaceHysteresis;
@@ -106,6 +116,31 @@ public partial class PlayerController : CharacterBody3D
         _state.WadeDepth = WadeDepth;
 
         SyncAnimatorTuning();
+        BuildAnimationGraph();
+    }
+
+    /// Assembles the AnimationTree from the clips the movement code can actually reach.
+    ///
+    /// The tree is built in code rather than authored in the scene on purpose: it is 16 states
+    /// and 240 transitions, which is a uniform "any state can reach any other" rule and nothing
+    /// a person would maintain by hand in the AnimationTree dock.
+    private void BuildAnimationGraph()
+    {
+        if (_rig.AnimTree == null)
+            return;
+
+        GraphClip[] clips = new GraphClip[AnimationIds.ReachableClips.Length];
+        for (int i = 0; i < clips.Length; i++)
+        {
+            string name = AnimationIds.ReachableClips[i];
+            clips[i] = new GraphClip(
+                name,
+                name == AnimationIds.WalkDiagonalForwardRight
+                    ? AnimationIds.WalkDiagonalForwardRightStartFraction
+                    : 0f);
+        }
+
+        _graph.Build(_rig.AnimTree, clips, AnimBlend, TreadBlend, AnimationIds.Tread);
     }
 
     private void SyncAnimatorTuning()

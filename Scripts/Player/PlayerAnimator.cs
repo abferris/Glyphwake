@@ -4,10 +4,13 @@ using Glyphwake.Core;
 
 namespace Glyphwake.Player;
 
-/// Decides which clip the character plays and how fast, from the movement state and the
-/// current input. Split out of <see cref="PlayerController"/> so that the locomotion rules
-/// and the animation rules can be read, and changed, independently: everything here is a pure
-/// function of the inputs below plus the previous clip, and nothing here moves the character.
+/// Decides which state the character's AnimationTree should be in, and how fast, from the
+/// movement state and the current input.
+///
+/// This is policy only. It does not know how a state machine works, and it holds no reference
+/// to a node: <see cref="LocomotionGraph"/> owns the tree and this tells it where to go. The
+/// two are split so the rules below can be read, and changed, without an animation graph in
+/// sight -- and so the graph can be replaced without touching the rules.
 public sealed class PlayerAnimator
 {
     // Not exported: this is a plain class, not a node, so the inspector cannot reach it. The
@@ -27,29 +30,28 @@ public sealed class PlayerAnimator
     public float MinJumpScale = 0.5f;
     public float MaxJumpScale = 1.5f;
 
-    /// The clip currently playing, for tests and for the future AnimationTree.
-    public string CurrentClip => _clip;
+    /// The state the character is playing, as a clip name. The AnimationTree reports the same
+    /// strings, so this is what the GDScript tests assert against.
+    public string CurrentState => _graph.CurrentState;
 
-    private readonly AnimationPlayer _anim;
+    /// How fast the current state is playing, as a multiple of real time. Negative when the
+    /// character is walking backwards. This replaces reading AnimationPlayer.speed_scale, which
+    /// is always 1 once a tree is driving the player.
+    public float PlaybackSpeed { get; private set; } = 1f;
 
-    private string _clip = "";
-    private float _clipOffset = -1f;
+    private readonly LocomotionGraph _graph;
+    private readonly float _jumpClipLength;
+
     private float _swimStrokeSpeed = 1f;
     private float _jumpScale = 1f;
-    private float _jumpClipLength;
 
-    public PlayerAnimator(AnimationPlayer anim)
+    public PlayerAnimator(LocomotionGraph graph)
     {
-        _anim = anim;
-        if (_anim == null)
-            return;
-
-        Animation jump = _anim.GetAnimation(AnimationIds.Jump);
-        if (jump != null)
-            _jumpClipLength = (float)jump.Length;
+        _graph = graph;
+        _jumpClipLength = (float)graph.ClipLength(AnimationIds.Jump);
     }
 
-    /// Everything the choice of clip depends on, gathered by the caller in one place.
+    /// Everything the choice of state depends on, gathered by the caller in one place.
     public readonly struct Frame
     {
         /// Current locomotion mode. Decides between the swim clips and the ground clips.
@@ -115,13 +117,11 @@ public sealed class PlayerAnimator
         float gravity,
         Func<float> groundHeightUnder)
     {
-        if (_anim == null)
+        if (!_graph.IsValid)
             return;
 
-        string clip;
+        string state;
         float scale = 1f;
-        bool reversed = false;
-        float offset = 0f;
 
         LocomotionMode mode = frame.Mode;
         bool swimming = mode is LocomotionMode.SurfaceSwimming or LocomotionMode.UnderwaterSwimming;
@@ -132,13 +132,13 @@ public sealed class PlayerAnimator
                 && frame.HorizontalSpeed < TreadSpeedThreshold;
             if (treading)
             {
-                clip = AnimationIds.Tread;
+                state = AnimationIds.Tread;
                 _swimStrokeSpeed = 1f;
                 scale = 1f;
             }
             else
             {
-                clip = AnimationIds.SwimLoop;
+                state = AnimationIds.SwimLoop;
                 float activity = Mathf.Clamp(frame.Input.Length(), 0f, 1f);
                 float target = Mathf.Lerp(1f, SwimVigorousSpeed, activity);
                 _swimStrokeSpeed = Mathf.MoveToward(_swimStrokeSpeed, target, SwimStrokeBlend * dt);
@@ -147,8 +147,8 @@ public sealed class PlayerAnimator
         }
         else if (!frame.OnFloor)
         {
-            clip = AnimationIds.Jump;
-            if (clip != _clip)
+            state = AnimationIds.Jump;
+            if (state != _graph.CurrentState)
             {
                 float airTime = PredictAirTime(frame, bodyY, groundHeightUnder(), restHeight, gravity);
                 _jumpScale = _jumpClipLength > 0.01f && airTime > 0.05f
@@ -159,68 +159,28 @@ public sealed class PlayerAnimator
         }
         else if (frame.Speed < IdleSpeed)
         {
-            clip = AnimationIds.Idle;
+            state = AnimationIds.Idle;
         }
         else
         {
             bool running = frame.Speed >= WalkRunThreshold;
-            clip = DirectionalClip(running ? AnimationIds.Run : AnimationIds.Walk, frame.Input);
-            reversed = clip.Contains(AnimationIds.BackwardSuffix);
-            if (reversed)
-            {
-                clip = clip.Replace(AnimationIds.BackwardSuffix, AnimationIds.ForwardSuffix);
-                if (clip.Contains(AnimationIds.LeftSuffix))
-                    clip = clip.Replace(AnimationIds.LeftSuffix, AnimationIds.RightSuffix);
-                else if (clip.Contains(AnimationIds.RightSuffix))
-                    clip = clip.Replace(AnimationIds.RightSuffix, AnimationIds.LeftSuffix);
-            }
-            else if (!running && clip == AnimationIds.WalkDiagonalForwardRight)
-            {
-                Animation anim = _anim.GetAnimation(clip);
-                if (anim != null)
-                    offset = (float)anim.Length * 0.5f;
-            }
+            bool reversed;
+            state = AnimationIds.ClipFor(
+                running ? AnimationIds.Run : AnimationIds.Walk,
+                AnimationIds.DirectionFrom(frame.Input),
+                out reversed);
             scale = running
                 ? Mathf.Clamp(frame.Speed / RunAnimSpeed, MinAnimScale, MaxAnimScale)
                 : Mathf.Clamp(frame.Speed / WalkAnimSpeed, MinAnimScale, MaxAnimScale);
+
+            // The graph plays a state backwards by giving it a negative time scale. Which
+            // states that applies to is decided here, not in the graph, so the reversal stays
+            // with the rest of the clip choice.
+            if (reversed)
+                scale = -scale;
         }
 
-        _anim.SpeedScale = reversed ? -scale : scale;
-        if (clip == _clip && offset == _clipOffset)
-            return;
-
-        // prone swim <-> upright tread is a large pose change, so give it a longer blend
-        float blend = clip == AnimationIds.Tread || _clip == AnimationIds.Tread ? TreadBlend : AnimBlend;
-        _clip = clip;
-        _clipOffset = offset;
-        _anim.Play(clip, blend);
-        if (offset > 0f)
-            _anim.Seek(offset, true);
-    }
-
-    private static string DirectionalClip(string gait, Vector2 input)
-    {
-        bool forward = input.Y > 0.5f;
-        bool backward = input.Y < -0.5f;
-        bool left = input.X < -0.5f;
-        bool right = input.X > 0.5f;
-
-        if (forward && left)
-            return gait + " Diagonal Forward Left";
-        if (forward && right)
-            return gait + " Diagonal Forward Right";
-        if (backward && left)
-            return gait + " Diagonal Backward Left";
-        if (backward && right)
-            return gait + " Diagonal Backward Right";
-        if (forward)
-            return gait + " Forward";
-        if (backward)
-            return gait + " Backward";
-        if (left)
-            return gait + " Strafe Left";
-        if (right)
-            return gait + " Strafe Right";
-        return gait;
+        PlaybackSpeed = scale;
+        _graph.TravelTo(state, scale);
     }
 }

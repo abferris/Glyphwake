@@ -107,7 +107,7 @@ func _scan() -> void:
 func _sample() -> void:
 	var sub: float = player.WadeSubmersion
 	var under: bool = player.IsUnderwater
-	var clip := anim.current_animation.strip_edges()
+	var clip := String(player.AnimationState).strip_edges()
 	var swimming_look := clip == "Swim Tread" or clip == "Swimming Loop"
 
 	# the zone overlapping while the feet are still out of the water is the whole bug
