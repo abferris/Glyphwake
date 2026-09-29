@@ -25,12 +25,11 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
 [node name="Camera3D" type="Camera3D" parent="Head"]
 script = ExtResource("2_camera")
 
-; ===== DEBUG VIEW — to remove: delete this node (and this comment) and Scripts/Player/DebugChaseCamera.cs =====
-[node name="DebugChaseCamera_REMOVE_ME" type="Camera3D" parent="."]
+; ===== DEBUG VIEW — a second, independent camera on ToggleKey (F3). It takes the viewport from the head camera and hands it back when toggled off. Delete this node (and this comment) and Scripts/Player/DebugChaseCamera.cs when the game no longer needs a chase view =====
+[node name="DebugChaseCamera" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.9398, 0.3417, 0, -0.3417, 0.9398, 2.2, 2.6, 3.4)
 fov = 45.0
 near = 0.1
-current = true
 script = ExtResource("4_debug")
 
 ; ===== SURFACE SWIM POSE — levels the head and holds both hands just below the waterline (ArmSubmersion) while swimming at the surface =====

@@ -3,6 +3,8 @@
 [ext_resource type="Terrain3DAssets" uid="uid://cx45rgslngk3r" path="res://Assets/Terrain/island_assets.tres" id="1_gjpho"]
 [ext_resource type="Script" uid="uid://1eeeycrjpp45" path="res://Scripts/World/WaterZone.cs" id="2_p70al"]
 [ext_resource type="PackedScene" path="res://Scenes/Player.tscn" id="3_45d1s"]
+[ext_resource type="Shader" uid="uid://c4d4h76qw1yoy" path="res://Shaders/water_from_below.gdshader" id="4_wsurf"]
+[ext_resource type="Shader" uid="uid://ca7021hjfuxqc" path="res://Shaders/water_from_above.gdshader" id="5_wtop"]
 
 [sub_resource type="Gradient" id="Gradient_q2d71"]
 offsets = PackedFloat32Array(0.2, 1)
@@ -45,14 +47,31 @@ _shader_parameters = {
 &"projection_threshold": null
 }
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ti1bm"]
-transparency = 1
-albedo_color = Color(0.09, 0.31, 0.45, 0.72)
-metallic = 0.3
-roughness = 0.08
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_wtop"]
+render_priority = 0
+shader = ExtResource("5_wtop")
+shader_parameter/shallow_color = Color(0.09, 0.31, 0.45, 1)
+shader_parameter/deep_color = Color(0.02, 0.09, 0.16, 1)
+shader_parameter/reflect_color = Color(0.42, 0.56, 0.72, 1)
+shader_parameter/extinction = 0.25
+shader_parameter/shallow_opacity = 0.2
+shader_parameter/fresnel_power = 4.0
+shader_parameter/reflect_strength = 0.55
+shader_parameter/max_thickness = 24.0
+shader_parameter/ripple_strength = 0.09
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_op4cu"]
 size = Vector2(9000, 9000)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_wbelow"]
+render_priority = 0
+shader = ExtResource("4_wsurf")
+shader_parameter/window_color = Color(0.3, 0.55, 0.68, 0.6)
+shader_parameter/mirror_color = Color(0.18, 0.4, 0.52, 0.92)
+shader_parameter/ripple_strength = 0.12
+shader_parameter/ripple_scale = 0.22
+shader_parameter/ripple_speed = 0.8
+shader_parameter/shimmer = 0.16
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_8l3nt"]
 size = Vector3(9000, 50, 9000)
@@ -81,7 +100,11 @@ metadata/_edit_lock_ = true
 
 [node name="Water" type="MeshInstance3D" parent="." unique_id=1322131637]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 500, 80, -1439.159)
-material_override = SubResource("StandardMaterial3D_ti1bm")
+material_override = SubResource("ShaderMaterial_wtop")
+mesh = SubResource("PlaneMesh_op4cu")
+
+[node name="SurfaceFromBelow" type="MeshInstance3D" parent="Water" unique_id=1322131638]
+material_override = SubResource("ShaderMaterial_wbelow")
 mesh = SubResource("PlaneMesh_op4cu")
 
 [node name="WaterZone" type="Area3D" parent="." unique_id=1514871703]
@@ -92,7 +115,7 @@ WaterSurfaceY = 80.0
 [node name="ZoneShape" type="CollisionShape3D" parent="WaterZone" unique_id=1393050239]
 visibility_parent = NodePath("../../Water")
 shape = SubResource("BoxShape3D_8l3nt")
-debug_color = Color(0, 0.6, 0.69803923, 0.8)
+debug_color = Color(0, 0.3977772, 0.6961475, 0.8)
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=220040755]
 environment = SubResource("Environment_waglr")
