@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://ne3tq4n2nnbl"
+path="res://.godot/imported/water_tint.glsl-f26c1875a6c7f16aa16e3b9cd48a4650.res"
+
+[deps]
+
+source_file="res://Shaders/water_tint.glsl"
+dest_files=["res://.godot/imported/water_tint.glsl-f26c1875a6c7f16aa16e3b9cd48a4650.res"]
+
+[params]
+
