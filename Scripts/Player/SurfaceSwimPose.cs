@@ -1,16 +1,36 @@
 using Godot;
+using Glyphwake.Core;
 
+namespace Glyphwake.Player;
+
+/// Holds the surface-swim pose: the head level, and both hands just under the waterline while
+/// treading.
+///
+/// The arm clamp is applied in _Process rather than in the modifier pass, because a
+/// SetBoneGlobalPose issued from inside the SkeletonModifier3D pass is discarded for non-leaf
+/// bones like the shoulder -- the skeleton re-derives those from the animation. Late process
+/// priority is what guarantees this runs after the AnimationPlayer has written the frame.
 public partial class SurfaceSwimPose : SkeletonModifier3D
 {
     [Export] public float ArmSubmersion = 0.08f;
 
-    private static readonly string[] Sides = { "Left", "Right" };
-
     private PlayerController _player;
+    private PlayerRig _rig;
     private Skeleton3D _skeleton;
-    private int _headBone = -1;
-    private readonly int[] _shoulders = { -1, -1 };
-    private readonly int[] _hands = { -1, -1 };
+    private int[] _shoulders;
+    private int[] _hands;
+
+    /// Resolved on first use rather than in _Ready: Godot readies children before parents, so
+    /// the PlayerController that owns the rig has not built it yet when this runs.
+    private PlayerRig Rig
+    {
+        get
+        {
+            if (_rig == null && _player != null)
+                _rig = _player.Rig;
+            return _rig;
+        }
+    }
 
     public override void _Ready()
     {
@@ -23,53 +43,53 @@ public partial class SurfaceSwimPose : SkeletonModifier3D
         if (_skeleton == null)
             return;
 
-        _headBone = _skeleton.FindBone("Head");
-        for (int i = 0; i < Sides.Length; i++)
+        _shoulders = new[]
         {
-            _shoulders[i] = _skeleton.FindBone(Sides[i] + "Shoulder");
-            _hands[i] = _skeleton.FindBone(Sides[i] + "Hand");
-        }
+            _skeleton.FindBone(PlayerRig.LeftShoulderBoneName),
+            _skeleton.FindBone(PlayerRig.RightShoulderBoneName),
+        };
+        _hands = new[]
+        {
+            _skeleton.FindBone(PlayerRig.LeftHandBoneName),
+            _skeleton.FindBone(PlayerRig.RightHandBoneName),
+        };
         ProcessPriority = 100;
     }
 
-    private bool _surfaceActive()
+    private bool SurfaceActive()
     {
-        return _player != null && _skeleton != null
-            && _player.IsSwimming && !_player.IsUnderwater && !_player.IsWading;
+        return _player != null && Rig != null && _player.State.IsAtOrAboveSurface;
     }
 
-    // The arm clamp is applied here, after the AnimationPlayer has written the clip poses
-    // for this frame. A SetBoneGlobalPose issued from inside the SkeletonModifier3D pass is
-    // discarded for non-leaf bones like the shoulder, because the skeleton re-derives them
-    // from the animation. Late process priority guarantees we run after the player.
     public override void _Process(double delta)
     {
-        if (!_surfaceActive())
+        if (!SurfaceActive() || _skeleton == null || _hands == null)
             return;
-        _submerge_arms();
+        SubmergeArms();
     }
 
     public override void _ProcessModificationWithDelta(double delta)
     {
-        if (!_surfaceActive() || _headBone < 0)
+        PlayerRig rig = Rig;
+        if (!SurfaceActive() || _skeleton == null || rig == null || !rig.HasHeadBone)
             return;
-        _level_head();
+        LevelHead(rig.HeadBone);
     }
 
-    private void _level_head()
+    private void LevelHead(int headBone)
     {
-        Transform3D pose = _skeleton.GetBoneGlobalPose(_headBone);
+        Transform3D pose = _skeleton.GetBoneGlobalPose(headBone);
         Basis facingFlip = new Basis(new Vector3(0f, 1f, 0f), Mathf.Pi);
         Basis levelWorld = _player.GlobalTransform.Basis * facingFlip * pose.Basis;
         Basis skeletonBasis = _skeleton.GlobalTransform.Basis;
         Basis leveled = skeletonBasis.Inverse() * levelWorld;
-        _skeleton.SetBoneGlobalPose(_headBone, new Transform3D(leveled, pose.Origin));
+        _skeleton.SetBoneGlobalPose(headBone, new Transform3D(leveled, pose.Origin));
     }
 
     // Holds both hands just below the waterline without altering the authored arm cycle.
     // Only the shoulder is rotated, so the elbow and wrist articulation and the arm
     // motion from the clip are preserved; a hand already submerged is left untouched.
-    private void _submerge_arms()
+    private void SubmergeArms()
     {
         Transform3D skelGlobal = _skeleton.GlobalTransform;
         Quaternion toSkel = skelGlobal.Basis.Orthonormalized().GetRotationQuaternion();
@@ -98,14 +118,14 @@ public partial class SurfaceSwimPose : SkeletonModifier3D
             float newHr = Mathf.Sqrt(Mathf.Max(0f, len * len - desired * desired));
             Vector3 vTgt = flat / hr * newHr + Vector3.Up * desired;
 
-            Quaternion q = _rotation_between(vNow / len, vTgt.Normalized());
+            Quaternion q = RotationBetween(vNow / len, vTgt.Normalized());
             Quaternion shoulder = shPose.Basis.Orthonormalized().GetRotationQuaternion();
             Quaternion corrected = toWorld * q * toSkel * shoulder;
             _skeleton.SetBoneGlobalPose(_shoulders[i], new Transform3D(new Basis(corrected), shPose.Origin));
         }
     }
 
-    private static Quaternion _rotation_between(Vector3 a, Vector3 b)
+    private static Quaternion RotationBetween(Vector3 a, Vector3 b)
     {
         Vector3 axis = a.Cross(b);
         float s = axis.Length();

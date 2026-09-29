@@ -1,5 +1,12 @@
 using Godot;
+using Glyphwake.Core;
 
+namespace Glyphwake.Player;
+
+/// A second, independent camera for inspecting the character from outside. It borrows the
+/// viewport rather than owning it: only one Camera3D can be current, so it takes the viewport
+/// on demand and hands it straight back, and the head camera is told either way so the game is
+/// never left with no current camera at all.
 public partial class DebugChaseCamera : Camera3D
 {
     [Export] public float Distance = 3.2f;
@@ -8,7 +15,7 @@ public partial class DebugChaseCamera : Camera3D
     [Export] public Key ToggleKey = Key.F3;
 
     private Node3D _body;
-    private CameraController _fps;
+    private CameraController _head;
     private bool _held;
 
     public bool Active => _held;
@@ -21,7 +28,7 @@ public partial class DebugChaseCamera : Camera3D
             node = node.GetParent();
         _body = node as Node3D;
         if (_body != null)
-            _fps = _body.GetNodeOrNull<CameraController>("Head/Camera3D");
+            _head = _body.GetNodeOrNull<CameraController>(PlayerRig.CameraNodePath);
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -40,21 +47,21 @@ public partial class DebugChaseCamera : Camera3D
     {
         _held = on;
         Current = on;
-        if (_fps != null)
-            _fps.SetViewportHeld(on);
+        if (_head != null)
+            _head.SetViewportHeld(on);
     }
 
     public override void _Process(double delta)
     {
-        if (_body == null || _fps == null || !_held)
+        if (_body == null || _head == null || !_held)
             return;
 
         // The underwater tint lives on the head camera's environment, so borrow it rather than
         // duplicating the fog setup: this view would otherwise lose the tint while submerged.
-        Environment = _fps.Environment;
+        Environment = _head.Environment;
 
         float yaw = _body.Rotation.Y;
-        float elev = Mathf.DegToRad(Mathf.RadToDeg(-_fps.LookPitch) * PitchFactor);
+        float elev = Mathf.DegToRad(Mathf.RadToDeg(-_head.LookPitch) * PitchFactor);
         Vector3 behind = new Vector3(Mathf.Sin(yaw), 0f, Mathf.Cos(yaw));
         Vector3 target = _body.GlobalPosition + Vector3.Up * 1.0f;
         GlobalPosition = target + behind * (Distance * Mathf.Cos(elev)) + Vector3.Up * (Height + Distance * Mathf.Sin(elev));
