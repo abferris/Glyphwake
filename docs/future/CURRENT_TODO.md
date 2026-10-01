@@ -97,7 +97,12 @@
 # Leave For Another Time
 ## Water UX
 Make underwater visuals better for user experience.
+- distance fade is too strong
 ## Non-Ocean Water
 - rivers
 - lakes
 ## Ledge mechanics
+## Make this shit Multiplayer 
+- Hosted
+    - only up when I tell it to run
+    - figure out what goes on the server and what is in the game that people have downloaded
