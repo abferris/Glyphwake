@@ -204,8 +204,8 @@ func report_plunge() -> void:
 			", before FloatEngageDepth ", snappedf(engage, 0.001),
 			" -- it should keep falling until mostly submerged")
 		failed = true
-	# the float targets SurfaceHeadHeight (0) and the stroke bobs the head a few mm either side
-	# of the waterline, so allow that much before calling it submerged
+	# the float targets SurfaceHeadHeight and the stroke bobs the head a few mm either side
+	# of it, so allow that much before calling it submerged
 	if settled["head"] < zone.WaterSurfaceY - 0.02:
 		printerr("FAIL: settled with the head under the water (", settled["head"], " < ", zone.WaterSurfaceY - 0.02, ")")
 		failed = true

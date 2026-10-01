@@ -12,32 +12,32 @@ namespace Glyphwake.World;
 /// frame they happen and nothing on the frames they do not.
 public partial class WaterZone : Area3D
 {
-    [Export] public float WaterSurfaceY = 55f;
+	[Export] public float WaterSurfaceY = 55f;
 
-    private readonly HashSet<PlayerController> _inside = new();
+	private readonly HashSet<PlayerController> _inside = new();
 
-    public override void _PhysicsProcess(double delta)
-    {
-        Godot.Collections.Array<Node3D> overlapping = GetOverlappingBodies();
-        HashSet<PlayerController> stillInside = new();
+	public override void _PhysicsProcess(double delta)
+	{
+		Godot.Collections.Array<Node3D> overlapping = GetOverlappingBodies();
+		HashSet<PlayerController> stillInside = new();
 
-        foreach (Node3D body in overlapping)
-        {
-            if (body is PlayerController player)
-            {
-                player.EnterWater(WaterSurfaceY);
-                stillInside.Add(player);
-            }
-        }
+		foreach (Node3D body in overlapping)
+		{
+			if (body is PlayerController player)
+			{
+				player.EnterWater(WaterSurfaceY);
+				stillInside.Add(player);
+			}
+		}
 
-        foreach (PlayerController player in _inside)
-        {
-            if (!stillInside.Contains(player))
-                player.ExitWater();
-        }
+		foreach (PlayerController player in _inside)
+		{
+			if (!stillInside.Contains(player))
+				player.ExitWater();
+		}
 
-        _inside.Clear();
-        foreach (PlayerController player in stillInside)
-            _inside.Add(player);
-    }
+		_inside.Clear();
+		foreach (PlayerController player in stillInside)
+			_inside.Add(player);
+	}
 }

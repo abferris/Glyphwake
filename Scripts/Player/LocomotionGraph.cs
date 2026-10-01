@@ -12,14 +12,15 @@ public readonly struct GraphClip
     /// introduced without rewriting what those tests assert.
     public readonly string Name;
 
-    /// Where to start within the clip, as a fraction of its length. Zero for almost all of
-    /// them. See <see cref="LocomotionGraph"/> for why this is not simply a time in seconds.
-    public readonly float StartFraction;
-
-    public GraphClip(string name, float startFraction = 0f)
+    /// Where to start within the clip, as a fraction of its length. Always zero: a start offset
+    /// on an AnimationNodeAnimation needs a custom timeline, and a custom timeline fed the
+    /// clip's own length plus a non-looping node played the clip once and then held it --
+    /// forward-right and backwards-left both froze halfway through. A state machine can only
+    /// enter a state at its start anyway, so an offset there buys nothing the transition
+    /// crossfade does not already smooth over.
+    public GraphClip(string name)
     {
         Name = name;
-        StartFraction = startFraction;
     }
 }
 
@@ -78,6 +79,18 @@ public sealed class LocomotionGraph
             return 0.0;
         Animation anim = _player.GetAnimation(name);
         return anim?.Length ?? 0.0;
+    }
+
+    /// Loop mode of a clip in the library, or linear when the library has no such clip.
+    ///
+    /// An AnimationNodeAnimation's own loop mode wins over the clip's once it has been set, and
+    /// it defaults to None, so leaving it alone makes looping clips play exactly once and then
+    /// hold their last pose. The clip resource knows the truth, so read it from there.
+    public Animation.LoopModeEnum LoopModeFor(string name)
+    {
+        if (_player == null)
+            return Animation.LoopModeEnum.Linear;
+        return _player.GetAnimation(name)?.LoopMode ?? Animation.LoopModeEnum.Linear;
     }
 
     /// Builds the state machine and starts it on the first clip.
@@ -176,22 +189,7 @@ public sealed class LocomotionGraph
 
     private AnimationNodeBlendTree BuildState(in GraphClip clip)
     {
-        var anim = new AnimationNodeAnimation { Animation = clip.Name };
-
-        if (clip.StartFraction > 0f)
-        {
-            double length = ClipLength(clip.Name);
-            if (length > 0.001)
-            {
-                // A start offset is ignored unless the node also has a custom timeline, and the
-                // custom timeline has to be the clip's own length or the clip gets time-warped
-                // to fit it. Setting both to the real length is what makes the offset apply
-                // without changing the playback rate.
-                anim.UseCustomTimeline = true;
-                anim.TimelineLength = length;
-                anim.StartOffset = length * clip.StartFraction;
-            }
-        }
+        var anim = new AnimationNodeAnimation { Animation = clip.Name, LoopMode = LoopModeFor(clip.Name) };
 
         var state = new AnimationNodeBlendTree();
         state.AddNode(ClipNode, anim, new Vector2(0f, 0f));

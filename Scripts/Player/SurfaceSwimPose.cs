@@ -13,6 +13,14 @@ namespace Glyphwake.Player;
 public partial class SurfaceSwimPose : SkeletonModifier3D
 {
     [Export] public float ArmSubmersion = 0.08f;
+    // Floor on how far below horizontal the arm hangs. Solving for the hand height alone lets the
+    // arm come out level: the required drop is only a couple of centimetres at the treading
+    // waterline, so the horizontal component stays at nearly the full arm length and the upper arm
+    // ends up parallel with the surface. The "Swim Tread" clip already carries a 45 degree upper
+    // arm, so this only has to catch hands that breach the waterline; keep it under the clip's
+    // angle or the clamp fights the authored pose. Tilting further down never lifts a hand, so the
+    // "hands stay submerged" guarantee is unaffected.
+    [Export] public float ArmDropDeg = 35f;
 
     private PlayerController _player;
     private PlayerRig _rig;
@@ -57,9 +65,14 @@ public partial class SurfaceSwimPose : SkeletonModifier3D
     }
 
     private bool SurfaceActive()
-    {
-        return _player != null && Rig != null && _player.State.IsAtOrAboveSurface;
-    }
+	{
+		// IsSurfaceSwimming, not IsAtOrAboveSurface. The water zone reaches 25 m above the
+		// waterline, so "at or above the surface" also covers the whole of a plunge through
+		// open air -- and SubmergeArms pulls the hands down to a world height just under the
+		// waterline, which is nonsense applied to a body still falling towards it from a
+		// height. The modifier waits until the water is actually holding the body up.
+		return _player != null && Rig != null && _player.State.IsSurfaceSwimming;
+	}
 
     public override void _Process(double delta)
     {
@@ -117,6 +130,13 @@ public partial class SurfaceSwimPose : SkeletonModifier3D
             float desired = Mathf.Clamp(targetY - shW.Y, -len, len);
             float newHr = Mathf.Sqrt(Mathf.Max(0f, len * len - desired * desired));
             Vector3 vTgt = flat / hr * newHr + Vector3.Up * desired;
+
+            // Hold the arm at least ArmDropDeg below horizontal, keeping the azimuth it already
+            // has. Only ever increases the downward component, so a hand can never be lifted back
+            // towards the surface by the clamp.
+            float drop = Mathf.Max(-vTgt.Y / len, Mathf.Sin(Mathf.DegToRad(ArmDropDeg)));
+            float hTgt = Mathf.Sqrt(Mathf.Max(0f, len * len - drop * drop * len * len));
+            vTgt = flat / hr * hTgt - Vector3.Up * (drop * len);
 
             Quaternion q = RotationBetween(vNow / len, vTgt.Normalized());
             Quaternion shoulder = shPose.Basis.Orthonormalized().GetRotationQuaternion();

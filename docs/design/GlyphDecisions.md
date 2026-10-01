@@ -80,7 +80,7 @@ types of glyphs. We will be heavily reliant on these tags.
         - Projectile speed
       - May target specific glyph classification
     - Base Stats
-- Techniques
+- Technique Glyph
   - Do not add a skill to the skill bar
   - Add new capabilities
   - Will have a cost when used

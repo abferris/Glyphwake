@@ -140,11 +140,4 @@ public static class AnimationIds
         Run + " " + DiagonalForwardLeft,
         Run + " " + DiagonalForwardRight,
     };
-
-    /// Where in its clip the walk-diagonal-forward-right state starts.
-    ///
-    /// That clip does not read well from its first frame -- it opens mid-stride, which shows as
-    /// a foot sliding on contact -- so the walk state starts halfway through. This is a
-    /// cosmetic offset on one clip, and it is a candidate to be fixed in the clip itself.
-    public const float WalkDiagonalForwardRightStartFraction = 0.5f;
 }

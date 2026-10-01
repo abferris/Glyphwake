@@ -20,7 +20,14 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float SwimSpeed = 3f;
     [Export] public float SurfaceSwimSpeed = 5f;
     [Export] public float SwimAcceleration = 8f;
-    [Export] public float SurfaceHeadHeight = 0f;
+    // How far below the head bone the waterline sits while treading. The float settles the body at
+    // surface + SurfaceHeadHeight - RestHeadHeight, so this is exactly the gap between the head
+    // bone and the water. The shoulder bone rides 0.115 m below the head bone in the tread pose,
+    // so the shoulder is SurfaceHeadHeight - 0.115 clear of the water: 0.18 measured with the
+    // shoulder still 6.5 cm out, which read as treading at the armpits, and 0.06 puts the water
+    // above both shoulder joints -- shoulders, chest, hips and arms under, neck at the waterline,
+    // head out.
+    [Export] public float SurfaceHeadHeight = 0.06f;
     [Export] public float SurfaceHeadBob = 0.05f;
     [Export] public float DiveDelay = 0.25f;
     [Export] public float DiveLookDownDeg = 25f;
@@ -33,9 +40,30 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float SubmergedThreshold = 0.15f;
     [Export] public float SurfaceHysteresis = 0.1f;
     [Export(PropertyHint.Range, "0,1,0.05")] public float FloatEngageDepth = 0.7f;
+    [Export(PropertyHint.Range, "0.5,1,0.01")] public float WadeHandoverDepth = 0.92f;
     [Export] public float WadeDepth = 2f;
+    // How far a swimmer will climb a submerged step without walking it. The float parks the
+    // feet a fixed depth under the waterline, so the treading feet are already WadeStepUpHeight
+    // above the floor of water WadeDepth calls wadeable: any step inside this height is by
+    // construction shallower than the body can tread in, which is what makes it safe to climb
+    // one and then hand over to walking. Anything taller is a wall, not a ledge.
+    [Export] public float WadeStepUpHeight = 0.75f;
+    // Downward speed, in m/s, above which a body over water is still a fall rather than a swim.
+    // Measured, not guessed: a 20 m drop is doing 19 m/s as its feet cross the waterline and
+    // still 6.8 m/s a tenth of a second later, when the body is already fully submerged. A
+    // deliberate dive tops out at MaxSwimVerticalSpeed = 4, so this sits clear of it.
+    [Export] public float PlungeSpeed = 6f;
     [Export(PropertyHint.Range, "0.1,1,0.05")] public float WadeMinSpeedFactor = 0.5f;
     [Export(PropertyHint.Range, "0.25,4,0.05")] public float WadeDragExponent = 1.5f;
+
+    // Walking uphill. The steepest ground the body can stand on at all, which Godot decides from
+    // FloorMaxAngle and which everything else here is measured against: up to SlopeFullSpeedDeg
+    // costs nothing, and between there and this the speed falls to SlopeMinSpeedFactor. Past it
+    // the ground is a wall and no amount of speed factor gets a body up it.
+    [Export(PropertyHint.Range, "1,89,1")] public float SlopeMaxAngleDeg = 60f;
+    [Export(PropertyHint.Range, "0,45,1")] public float SlopeFullSpeedDeg = 35f;
+    [Export(PropertyHint.Range, "0.1,1,0.05")] public float SlopeMinSpeedFactor = 0.45f;
+
     [Export] public float CameraFloorClearance = 0.4f;
 
     [Export] public float MaxSwimForwardPitchDeg = 40f;
@@ -88,6 +116,9 @@ public partial class PlayerController : CharacterBody3D
     public bool IsSwimming => _state.InWater;
     public bool IsUnderwater => _state.IsUnderwater;
     public bool IsWading => _state.IsWading;
+    public bool IsPlunging => _state.IsPlunging;
+    public bool IsOverShallowFloor => _state.IsOverShallowFloor;
+    public float GroundY => _state.GroundY;
     public float WaterSurfaceY => _state.WaterSurfaceY;
     public float WadeSubmersion => _state.WadeSubmersion;
 
@@ -105,6 +136,10 @@ public partial class PlayerController : CharacterBody3D
 
     public override void _Ready()
     {
+        // From here on, what the body can stand on is a tuned number rather than Godot's 45 deg
+        // default, so the slope bands below have something to be measured against.
+        FloorMaxAngle = Mathf.DegToRad(SlopeMaxAngleDeg);
+
         _rig = new PlayerRig(this);
 
         _graph = new LocomotionGraph(_rig.Anim);
@@ -113,7 +148,9 @@ public partial class PlayerController : CharacterBody3D
         _state.SubmergedThreshold = SubmergedThreshold;
         _state.SurfaceHysteresis = SurfaceHysteresis;
         _state.FloatEngageDepth = FloatEngageDepth;
+        _state.WadeHandoverDepth = WadeHandoverDepth;
         _state.WadeDepth = WadeDepth;
+        _state.PlungeSpeed = PlungeSpeed;
 
         SyncAnimatorTuning();
         BuildAnimationGraph();
@@ -131,14 +168,7 @@ public partial class PlayerController : CharacterBody3D
 
         GraphClip[] clips = new GraphClip[AnimationIds.ReachableClips.Length];
         for (int i = 0; i < clips.Length; i++)
-        {
-            string name = AnimationIds.ReachableClips[i];
-            clips[i] = new GraphClip(
-                name,
-                name == AnimationIds.WalkDiagonalForwardRight
-                    ? AnimationIds.WalkDiagonalForwardRightStartFraction
-                    : 0f);
-        }
+            clips[i] = new GraphClip(AnimationIds.ReachableClips[i]);
 
         _graph.Build(_rig.AnimTree, clips, AnimBlend, TreadBlend, AnimationIds.Tread);
     }
@@ -184,6 +214,7 @@ public partial class PlayerController : CharacterBody3D
         }
 
         MoveAndSlide();
+        WadeStepUp();
         UpdateBodyPitch(dt);
         UpdateLean(input, dt);
         _animator.Update(
@@ -213,7 +244,9 @@ public partial class PlayerController : CharacterBody3D
         _state.SubmergedThreshold = SubmergedThreshold;
         _state.SurfaceHysteresis = SurfaceHysteresis;
         _state.FloatEngageDepth = FloatEngageDepth;
+        _state.WadeHandoverDepth = WadeHandoverDepth;
         _state.WadeDepth = WadeDepth;
+        _state.PlungeSpeed = PlungeSpeed;
 
         _state.Update(
             new SubmersionProbe(
@@ -223,11 +256,74 @@ public partial class PlayerController : CharacterBody3D
                 EyePosition().Y,
                 _rig.RestHeight,
                 _rig.RestHeadHeight,
-                IsOnFloor()),
+                IsOnFloor(),
+                _verticalVelocity),
             // Only cast when in water. Out of it, nothing below reads this, and a character
             // walking on dry land should not pay for a raycast every physics step.
             _state.InWater ? GroundHeightUnder(GlobalPosition) : float.NegativeInfinity);
     }
+
+    /// Climbs a submerged step instead of treading against it.
+    ///
+    /// A swimmer heading for the bank meets the step with its feet still at the treading depth,
+    /// which is below the top of anything shallower than it, so the body stops dead against it
+    /// and treads there forever: the water is wadeable, but nothing ever puts the body on the
+    /// floor that would make it wading. This lifts the body over the step instead, and only over
+    /// a step low enough that the top of it is shallower than the body was already floating in --
+    /// see WadeStepUpHeight -- so the handover afterwards is the ordinary one, feet on the floor,
+    /// submersion under WadeHandoverDepth, ground clips. It is a lift rather than a proper step,
+    /// so it can clip the lip of the step on the way over, which is cheaper than a swept test and
+    /// is not visible while the body is still in the water.
+    ///
+    /// The rise it acts on was sampled before the move, by SampleWadeStepUpRise, so that the
+    /// settle could gate on the same number.
+    private void WadeStepUp()
+    {
+        if (_state.Mode != LocomotionMode.SurfaceSwimming || !IsOnWall())
+            return;
+
+        if (_wadeStepUpRise <= 0.01f || _wadeStepUpRise > WadeStepUpHeight)
+            return;
+
+        GlobalPosition += Vector3.Up * _wadeStepUpRise;
+    }
+
+    /// How far the floor a stride ahead of the body sits above its feet, or negative infinity when
+    /// there is no floor there or the body is not heading anywhere.
+    ///
+    /// Sampled once a frame and read by both WadeStepUp and the shallow-floor settle, because two
+    /// decisions hang off it and they have to come out the same. The lift will only take a step
+    /// this size; the settle is the handover the lift is setting up, so it may only stand down the
+    /// surface float when there is a step of this size to hand over to. Asked separately the two
+    /// can disagree, and the failure is a body on a bank too steep for either: the settle stands
+    /// the float down over shallow floor it has no way to reach, the body drops off the surface to
+    /// no purpose, and it sinks under water it should have been treading on top of. Measured
+    /// before SimulateSwim uses it, so both see one number for the frame; Mode is SurfaceSwimming
+    /// only when IsUnderwater is false, which is the branch that samples it, so the value is never
+    /// stale by the time WadeStepUp reads it after the move.
+    private void SampleWadeStepUpRise()
+    {
+        _wadeStepUpRise = float.NegativeInfinity;
+
+        Vector2 wish = new(_horizontalVelocity.X, _horizontalVelocity.Z);
+        if (wish.LengthSquared() < 0.01f)
+            return;
+
+        Vector3 ahead = GlobalPosition + new Vector3(wish.X, 0f, wish.Y).Normalized() * WadeStepUpProbe;
+        float floorY = GroundHeightUnder(ahead);
+        if (float.IsNegativeInfinity(floorY))
+            return;
+
+        _wadeStepUpRise = floorY - (GlobalPosition.Y - _rig.RestHeight);
+    }
+
+    /// Distance ahead of the body the step is looked for in. It has to clear the capsule radius,
+    /// because the floor sampled at the body itself is the floor it is already standing over, and
+    /// it is half of what decides what counts as climbable: WadeStepUpHeight over this is the
+    /// steepest gradient a stride can take.
+    [Export(PropertyHint.Range, "0.5,3,0.1")] public float WadeStepUpProbe = 1f;
+
+    private float _wadeStepUpRise = float.NegativeInfinity;
 
     private void UpdateBodyPitch(float dt)
     {
@@ -299,12 +395,18 @@ public partial class PlayerController : CharacterBody3D
         if (groundedNow)
         {
             bool running = Input.IsPhysicalKeyPressed(Key.Shift);
-            float speed = (running ? SprintSpeed : MoveSpeed) * speedFactor;
+            float speed = (running ? SprintSpeed : MoveSpeed) * speedFactor * SlopeSpeedFactor(direction);
             _horizontalVelocity = _horizontalVelocity.MoveToward(direction * speed, Acceleration * dt);
         }
 
+        // The downward stick is a contact aid -- it is what keeps a body standing still from
+        // drifting off a bump -- but it is also a real velocity, and only its share along the
+        // floor does any work. On a steep face that share cancels the climb outright: 2 m/s of it
+        // down a 60 degree face is 1.73 m/s downhill, against a character only asked for 2.25
+        // uphill, so the body stands there and slides instead of walking up. Input already presses
+        // the body into the floor, so the stick is only needed when there is none.
         if (groundedNow)
-            _verticalVelocity = -2f;
+            _verticalVelocity = direction.LengthSquared() > 0.0001f ? 0f : -2f;
 
         if (groundedNow && Input.IsPhysicalKeyPressed(Key.Space) && !_jumpHeld)
             _verticalVelocity = Mathf.Sqrt(JumpHeight * -2f * Gravity);
@@ -332,6 +434,7 @@ public partial class PlayerController : CharacterBody3D
                 dirH = dirH.Normalized();
 
             _horizontalVelocity = _horizontalVelocity.MoveToward(dirH * SurfaceSwimSpeed, SwimAcceleration * dt);
+            SampleWadeStepUpRise();
 
             bool diveHold = input.Y > 0f && camForward.Y < -Mathf.Sin(Mathf.DegToRad(DiveLookDownDeg));
             if (diveHold)
@@ -351,8 +454,8 @@ public partial class PlayerController : CharacterBody3D
                 // depth -- and the fall limit opens up again to MaxFallSpeed while it is not,
                 // so jumping in keeps falling instead of being caught at the waterline. Once
                 // the body is at or below the float target the spring takes over outright, so
-                // the tuned treading equilibrium (head on the waterline, since
-                // targetY = surface + SurfaceHeadHeight - HeadLocalY) is untouched.
+                // the tuned treading equilibrium (head SurfaceHeadHeight above the waterline,
+                // since targetY = surface + SurfaceHeadHeight - HeadLocalY) is untouched.
                 float targetY = _state.WaterSurfaceY + SurfaceHeadHeight - _rig.HeadLocalY;
                 float displacement = targetY - GlobalPosition.Y;
                 float band = Mathf.Max(0.01f, 1f - FloatEngageDepth);
@@ -360,9 +463,36 @@ public partial class PlayerController : CharacterBody3D
                 if (displacement >= 0f)
                     engage = 1f;
 
+                // You float in water you cannot touch the bottom of, and you stand in water you
+                // can. The float parks the feet a fixed depth under the waterline, so over any
+                // shelf shallower than that the feet sit below its top edge: the body cannot
+                // climb the step, and because treading keeps the feet submerged past
+                // WadeHandoverDepth, AtSwimDepth holds the swim look and the state never reaches
+                // wading either. The visible result is a body pressed against a submerged step,
+                // treading, in water it is standing-depth in. So where the floor under the body
+                // is shallow enough to wade in, the float gets out of the way and lets it land
+                // there, handing over through the ordinary wading path -- OnFloor, submersion
+                // under WadeHandoverDepth, ground clips. The descent stays at swim speed rather
+                // than the fall limit, because crossing a shallow spot is a swim down, not a
+                // drop, and the floor arrives well before free fall would.
+                //
+                // Shallow floor on its own is not enough to stand the float down: it is only a
+                // handover if there is somewhere to hand over to. WadeStepUpRise is the same
+                // measurement the lift acts on, so this waits for a step the body could actually
+                // take rather than any floor at all -- otherwise a bank too steep to climb, which
+                // is shallow floor with nothing behind it, stands the float down for good and the
+                // body sinks out of sight under water it was treading on top of a moment before.
+                bool overShallowFloor = _state.IsOverShallowFloor
+                    && !float.IsNegativeInfinity(_state.GroundY)
+                    && _wadeStepUpRise <= WadeStepUpHeight;
+                if (overShallowFloor)
+                    engage = 0f;
+
                 float floatAccel = displacement * SurfaceSpring - _verticalVelocity * SurfaceDamping;
                 float accel = Mathf.Lerp(Gravity, floatAccel, engage);
-                float fallLimit = Mathf.Lerp(MaxFallSpeed, -MaxSwimVerticalSpeed, engage);
+                float fallLimit = overShallowFloor
+                    ? -MaxSwimVerticalSpeed
+                    : Mathf.Lerp(MaxFallSpeed, -MaxSwimVerticalSpeed, engage);
                 _verticalVelocity = Mathf.Clamp(_verticalVelocity + accel * dt, fallLimit, MaxSwimVerticalSpeed);
             }
 
@@ -424,6 +554,39 @@ public partial class PlayerController : CharacterBody3D
     private float WadeSpeedFactor()
     {
         return Mathf.Lerp(1f, WadeMinSpeedFactor, Mathf.Pow(_state.WadeSubmersion, WadeDragExponent));
+    }
+
+    /// The share of the requested speed a body gets walking uphill on the floor it is standing on.
+    ///
+    /// Flat, and anything up to SlopeFullSpeedDeg, costs nothing. From there the factor falls
+    /// linearly to SlopeMinSpeedFactor as the floor approaches SlopeMaxAngleDeg, which is the point
+    /// where the ground stops being a floor at all and starts being a wall -- so the slowest this
+    /// gets is still a body that can get up it, just not at a run.
+    ///
+    /// The floor normal carries the slope's direction with it, so which way is downhill falls out of
+    /// the same vector rather than needing the body's facing: the normal's horizontal part points
+    /// down the fall line, and walking with it is downhill. Only uphill is penalised, because that
+    /// is the direction the factor was asked for; downhill is left exactly as it was, and what
+    /// stops a body going fast down a steep face is the same physics that stops it going up.
+    private float SlopeSpeedFactor(Vector3 direction)
+    {
+        if (!IsOnFloor())
+            return 1f;
+
+        Vector3 normal = GetFloorNormal();
+        float slope = Mathf.RadToDeg(Mathf.Acos(Mathf.Clamp(normal.Dot(Vector3.Up), -1f, 1f)));
+        if (slope <= SlopeFullSpeedDeg)
+            return 1f;
+
+        Vector2 fallLine = new Vector2(normal.X, normal.Z);
+        if (fallLine.LengthSquared() < 0.0001f)
+            return 1f;
+
+        if (direction.X * fallLine.X + direction.Z * fallLine.Y > 0f)
+            return 1f;
+
+        float t = Mathf.Clamp((slope - SlopeFullSpeedDeg) / Mathf.Max(1f, SlopeMaxAngleDeg - SlopeFullSpeedDeg), 0f, 1f);
+        return Mathf.Lerp(1f, SlopeMinSpeedFactor, t);
     }
 
     public void EnterWater(float surfaceY)

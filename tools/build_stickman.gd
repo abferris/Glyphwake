@@ -25,8 +25,21 @@ const TREAD_KNEE_MAX_DEG := 76.0
 const TREAD_ROOT_PITCH_DEG := 2.0
 # The tread arms are not synthesized: they are copied from "Swimming Loop" so the
 # character keeps the exact same arm stroke, and SurfaceSwimPose lowers the hands.
+# Matched by exact name, not by suffix. The rig calls the upper arm "LeftArm", so an
+# "UpArm" suffix never matched it and both upper arms were left in bind pose -- which on
+# this rig points them straight out to the sides, giving the level-armed T-pose at the
+# surface that SurfaceSwimPose then had nothing to correct.
 const TREAD_ARM_SOURCE := "Swimming Loop"
-const TREAD_ARM_BONES := ["Shoulder", "UpArm", "ForeArm", "Hand"]
+const TREAD_ARM_BONES := ["LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
+	"RightShoulder", "RightArm", "RightForeArm", "RightHand"]
+# The clavicle is what swings the upper arm: LeftShoulder's world orientation aims the segment to
+# the elbow, so LeftArm only carries elbow flexion. "Swimming Loop" drives the clavicle almost
+# level, so copied straight over it leaves the upper arm lying along the waterline and the
+# character reads as a T-pose at the surface. These are layered on top of the source stroke to
+# drop the arm and give it a scull.
+const TREAD_TILT_BONES := ["LeftShoulder", "RightShoulder"]
+const TREAD_ARM_DROP_DEG := 45.0
+const TREAD_SCULL_SWING_DEG := 14.0
 
 var ubones: Array
 var urest: Array
@@ -37,6 +50,7 @@ var u_root_u := -1
 var g_rest_w := {}
 var u_rest_w := {}
 var bind_fix := {}
+var bone_child := {}
 var skel: Skeleton3D
 var mesh_inst: MeshInstance3D
 var C := Transform3D.IDENTITY
@@ -109,6 +123,11 @@ func _prepare() -> void:
 	var bone_idx := {}
 	for i in range(skel.get_bone_count()):
 		bone_idx[skel.get_bone_name(i)] = i
+	# parent -> first child, so a bone's rest offset to its own child can be looked up
+	for i in range(skel.get_bone_count()):
+		var p := skel.get_bone_parent(i)
+		if p >= 0 and not bone_child.has(p):
+			bone_child[p] = i
 	for i in range(ubones.size()):
 		var nm: String = ubones[i][0]
 		if bone_idx.has(nm):
@@ -235,10 +254,8 @@ func _prep_tread_arms() -> void:
 		inv[g_of_u[ui]] = ui
 	for gi in skel.get_bone_count():
 		var bn: String = skel.get_bone_name(gi)
-		for suffix in TREAD_ARM_BONES:
-			if bn.ends_with(suffix) and inv.has(gi):
-				tread_arms[gi] = inv[gi]
-				break
+		if bn in TREAD_ARM_BONES and inv.has(gi):
+			tread_arms[gi] = inv[gi]
 	var times: Array = clip["times"]
 	var frames: Array = clip["frames"]
 	var length: float = clip["length"]
@@ -264,6 +281,34 @@ func _prep_tread_arms() -> void:
 		" phases=", tread_arm_src.size(), " src_len=", snappedf(length, 0.01))
 
 
+# Drops the upper arm to a fixed angle below horizontal and sweeps it fore and aft in
+# counter-phase with the eggbeater leg on the same side.
+#
+# The elevation correction rotates about the axis that changes elevation while leaving azimuth
+# alone, so the arm drops straight down rather than swinging sideways. Applied to the clavicle's
+# world basis, which pivots the whole arm chain about the shoulder joint.
+func _tread_arm_tilt(gi: int, basis: Basis, phase: float) -> Basis:
+	var bn: String = skel.get_bone_name(gi)
+	if not bone_child.has(gi):
+		return basis
+	var limb: Vector3 = basis * skel.get_bone_rest(bone_child[gi]).origin
+	if limb.length_squared() < 1.0e-8:
+		return basis
+	var cur := limb.normalized()
+	var flat := Vector3(cur.x, 0.0, cur.z)
+	if flat.length_squared() < 1.0e-8:
+		return basis
+	flat = flat.normalized()
+	var cur_elev: float = asin(clampf(-cur.y, -1.0, 1.0))
+	# UP x flat tilts the arm downward for a positive angle; the limb sits -Y of a rest bone.
+	var tilt := Basis(Vector3.UP.cross(flat).normalized(),
+		deg_to_rad(TREAD_ARM_DROP_DEG) - cur_elev)
+	var s := _side_sign(bn)
+	var lp: float = TAU * phase + (PI if bn.begins_with("Right") else 0.0)
+	var swing := Basis(Vector3.UP, deg_to_rad(TREAD_SCULL_SWING_DEG) * s * sin(lp))
+	return swing * tilt * basis
+
+
 # Composes rest world transforms top-down, applying each joint's world-space offset so
 # children inherit their parent's rotation. Starts upright (the rest pose), which is what
 # separates treading from the prone swim clips.
@@ -278,6 +323,8 @@ func _tread_world(f: int) -> Dictionary:
 			var src: Basis = tread_arm_src[f][gi]
 			var cur: Basis = world.basis.orthonormalized()
 			world.basis = (src * cur.inverse()) * world.basis
+			if skel.get_bone_name(gi) in TREAD_TILT_BONES:
+				world.basis = _tread_arm_tilt(gi, world.basis.orthonormalized(), phase)
 		else:
 			var off: Basis = _tread_offset(skel.get_bone_name(gi), phase)
 			if off != Basis.IDENTITY:

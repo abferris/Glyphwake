@@ -44,6 +44,7 @@ public sealed class PlayerAnimator
 
     private float _swimStrokeSpeed = 1f;
     private float _jumpScale = 1f;
+    private MoveDirection _lastDirection = MoveDirection.None;
 
     public PlayerAnimator(LocomotionGraph graph)
     {
@@ -160,14 +161,27 @@ public sealed class PlayerAnimator
         else if (frame.Speed < IdleSpeed)
         {
             state = AnimationIds.Idle;
+            _lastDirection = MoveDirection.None;
         }
         else
         {
             bool running = frame.Speed >= WalkRunThreshold;
+            MoveDirection direction = AnimationIds.DirectionFrom(frame.Input);
+
+            // The keys letting go mid-stride resolve to no direction while the body is still
+            // moving. Selecting the bare gait clip there read as a twitch twice -- once onto
+            // the bare clip and once onto Idle -- instead of finishing the step, so the gait
+            // already playing is held until the deceleration brings Idle in. A knockback with
+            // no gait to hold still falls through to the bare clip, as before.
+            if (direction == MoveDirection.None)
+                direction = _lastDirection;
+            else
+                _lastDirection = direction;
+
             bool reversed;
             state = AnimationIds.ClipFor(
                 running ? AnimationIds.Run : AnimationIds.Walk,
-                AnimationIds.DirectionFrom(frame.Input),
+                direction,
                 out reversed);
             scale = running
                 ? Mathf.Clamp(frame.Speed / RunAnimSpeed, MinAnimScale, MaxAnimScale)

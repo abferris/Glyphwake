@@ -1,8 +1,8 @@
 extends SceneTree
 
-## Wade drag sweep: stand the player in water of increasing depth, hold W, and check that the
-## horizontal speed follows the depth-derived factor rather than a flat multiplier the moment
-## the feet touch the zone.
+## Wade drag sweep: stand the player in water of increasing depth, hold W, and check both that
+## the horizontal speed follows the depth-derived factor while the player is still wading, and
+## that the ground clips stop when the water reaches the shoulders.
 ##
 ## The player is pinned to a measured standing height every frame (a treadmill) so the depth
 ## under them cannot drift while the speed ramps -- otherwise they slide down the bank and the
@@ -14,17 +14,25 @@ extends SceneTree
 ## faster than the 60 Hz physics tick, so a pin or a settle driven from idle frames lets the
 ## player integrate several times in between and slide off the depth being measured.
 
-const BUCKETS := [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.6]
+## Deliberately skips the band either side of shoulder depth. The handover carries the same
+## dead zone the state machine does, so a bucket inside it cannot pick a side: which side a
+## body is on there depends on how it got there, which a standing sweep cannot know. 1.1 is
+## the deepest bucket below the band and 1.6 the shallowest above it, and both clear it by
+## more than the 0.06 the shore scan allows.
+const BUCKETS := [0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.6]
 const DEEP := 2.8
 const SETTLE_TICKS := 60
 const HOLD_TICKS := 30
 const FOOT_OFFSET := 0.889  # capsule bottom below the player origin, see PlayerController._restHeight
+const SHOULDER_BONE := "LeftShoulder"
 
 var world: Node3D
 var player: CharacterBody3D
 var terrain: Terrain3D
 var camera: Camera3D
 var zone: Area3D
+var skeleton: Skeleton3D
+var shoulder_bone := -1
 var ticks := 0
 var started := false
 var scanned := false
@@ -71,6 +79,9 @@ func _physics_process(_delta: float) -> bool:
 		player = world.get_node_or_null("Player")
 		camera = world.get_node_or_null("Player/Head/Camera3D")
 		zone = world.get_node_or_null("WaterZone")
+		skeleton = player.get_node_or_null("Visual/Skeleton3D")
+		if skeleton:
+			shoulder_bone = skeleton.find_bone(SHOULDER_BONE)
 		terrain.set_camera(camera)
 		terrain.collision_mode = 3
 		scan_shore()
@@ -103,9 +114,11 @@ func total_phases() -> int:
 	return phases.size() + (1 if has_deep else 0) + (1 if has_dry else 0)
 
 
-## Phases are the wade buckets, then the deep control, then dry land. wading tops out where
-## the eye crosses the surface (~1.68 m on this model), so past that the player is supposed to
-## be swimming -- that boundary is its own check rather than another point on the drag curve.
+## Phases are the wade buckets, then the deep control, then dry land. The buckets are split by
+## what the water is doing to the body rather than by their label: below the shoulders the
+## player is wading and the drag curve applies, above them they are swimming and the walk
+## clips have to be gone. The deep control is a separate phase because past the eye crossing
+## the player is not swimming by choice but because they are under.
 func phase_kind(i: int) -> String:
 	if i < phases.size():
 		return "wade"
@@ -193,13 +206,34 @@ func begin_phase() -> void:
 	player.global_position = Vector3(spot.x, standing_y, spot.z)
 
 
+## World Y of the shoulder bone, or the eye if the rig has no skeleton, so the test can say how
+## deep the water is over the shoulders rather than inferring it from a tuning value.
+func shoulder_y() -> float:
+	if skeleton and shoulder_bone >= 0:
+		return (skeleton.global_transform * skeleton.get_bone_global_pose(shoulder_bone)).origin.y
+	return camera.global_position.y
+
+
+## Whether the clip actually playing is one of the ground clips. The mode would say the same
+## thing, but it is the code's own answer to its own question; this is what the player sees,
+## and the bug was reported about the animation, not about the flag.
+func playing_ground() -> bool:
+	var clip: String = player.AnimationState
+	return clip == "Idle" or clip == "Jumping Up" \
+		or clip.begins_with("Walk") or clip.begins_with("Run")
+
+
 func record() -> void:
 	var sub: float = player.WadeSubmersion
 	var horizontal: float = Vector2(player.velocity.x, player.velocity.z).length()
 	var want: float = lerpf(1.0, player.WadeMinSpeedFactor, pow(sub, player.WadeDragExponent)) * player.MoveSpeed
 	var kind := phase_kind(index)
 	var depth: float = zone.WaterSurfaceY - (standing_y - FOOT_OFFSET)
+	# Positive once the water is over the shoulders. Measured off the rig, so retuning
+	# WadeHandoverDepth cannot make this agree with the code by accident.
+	var over: float = zone.WaterSurfaceY - shoulder_y()
 	print(kind, " depth=", snappedf(depth, 0.01), " submersion=", snappedf(sub, 0.001),
+		" over_shoulder=", snappedf(over, 0.001), " clip=\"", player.AnimationState, "\"",
 		" swim=", player.IsSwimming, " wade=", player.IsWading, " under=", player.IsUnderwater,
 		" floor=", player.is_on_floor(), " speed=", snappedf(horizontal, 0.001), " want=", snappedf(want, 0.001),
 		" | body_y=", snappedf(player.global_position.y, 0.001), " eye_y=", snappedf(camera.global_position.y, 0.001),
@@ -221,10 +255,20 @@ func record() -> void:
 			printerr("FAIL: dry land is slowed (", snappedf(horizontal, 0.001), " vs ", player.MoveSpeed, ")")
 			failed = true
 		return
-	rows.append({"sub": sub, "speed": horizontal})
+	# Inside the dead zone the handover sits in, the body is as likely to be arriving as
+	# leaving, so this sweep has no opinion. Outside it, the shoulders decide.
+	if over > player.SurfaceHysteresis:
+		if playing_ground():
+			printerr("FAIL: the water is ", snappedf(over, 0.001), " m over the shoulders at depth ",
+				snappedf(depth, 0.01), " but the ground clip \"", player.AnimationState, "\" is still playing")
+			failed = true
+		return
+	if over >= -player.SurfaceHysteresis:
+		return
 	if not player.IsWading or player.IsUnderwater:
 		printerr("FAIL: depth ", snappedf(depth, 0.01), " should be wading, not swimming")
 		failed = true
+	rows.append({"sub": sub, "speed": horizontal})
 	if absf(horizontal - want) > 0.35:
 		printerr("FAIL: submersion ", snappedf(sub, 0.001), " speed ", snappedf(horizontal, 0.001), " != drag curve ", snappedf(want, 0.001))
 		failed = true

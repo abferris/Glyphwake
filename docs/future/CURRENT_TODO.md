@@ -1,50 +1,7 @@
-# Current Work To DO
-
-## Water Look Ownership
-Decide who owns the underwater look, and do it **before** the compositor is wired in, because wiring it first hardcodes the current single-camera-tint model into the scene.
-
-The extent and the colour are two different questions and should not be solved the same way. **Where** water is is currently described three times over, and the three only agree by hand: the surface height is a float on the zone (`WaterSurfaceY`, `Scripts/World/WaterZone.cs:6`, `Scenes/World.tscn:113`), the XZ footprint is the `ZoneShape` `CollisionShape3D` (`Scenes/World.tscn:115`), and the surface actually looked at is a separate 9000x9000 `PlaneMesh` on the `Water` mesh (`Scenes/World.tscn:101`). Resize the shape and the swim trigger changes while the fog does not; move the mesh and the view changes while the trigger does not. `tools/build_world.gd:93` sets `WaterSurfaceY` to 55.0 while the scene holds 80.0, so they may already have drifted. The proposal is to use the zone as the single reference for *where* water is and have the mesh derive from it, so the trigger and the effect cannot disagree. One wrinkle: a `CollisionShape3D` is a 3D volume, but water is a 1D surface height plus a 2D footprint, so the surface would be reconstructed from `shape.size` and `global_transform` and the top face would have to be given a defined meaning.
-
-**What colour it is** should not be re-hosted on the zone. The authoritative artistic definition is already the `Water` mesh's `ShaderMaterial` — `shallow_color`, `deep_color`, `reflect_color` — and the fix for `CameraController` holding a private copy of it is to stop the duplication, not to move the number somewhere else: read it from the water that is actually there, ideally via a shared `.tres` that the material and the effect both read. A `CollisionShape3D` also cannot hold an `[Export] Color` at all without attaching a script to a physics shape to hold art data. This was tried once and the failure was narrower than it looks — the first pass sourced the tint from the zone's `debug_color` `(0, 0.6, 0.698)`, which read as pale aqua and was moved onto the surface albedo (`docs/past/WORKLOG-09-27-2026.md:293`). `debug_color` is an editor gizmo value, not an authored look value, so that is evidence against the field, not against the architecture. If a colour ever does belong on the zone it needs a real export of its own.
-
-**Near/deep fog density stays in C# and is not part of this.** Density is a property of the view — how far you can see through the medium — and not of the body, so it should not be coupled to which zone the eye is in, and with one body a global curve is the right default. It becomes per-body for free if the murk ever needs to differ, through the array `WaterTintEffect.gd` already carries. Moving the density onto a `Curve` instead of two floats plus a lerp is a separate cleanup, not a dependency of this item.
-
-The practical target is much smaller than a restructure: `CameraController` stops owning `UnderwaterTint` and keeps only the density curve. The effect reads colour from the water body it is shading, which also means a second body works without touching the camera.
-
-## Bugs
-### Player Model
-#### Swimming Model
-Test swimming Camera
-Treading can latch the camera as submerged: `IsUnderwater` pitches the body to -90 deg, which drops the head bone from 0.56 to 0.08 above the origin, so the eye stays under and the pose never recovers. `tools/test_stickman.gd` stage 8 fails on this, deterministically: body sits 0.5 m under the surface, eye 0.8 m under, underwater on every frame. 0.8 m is exactly `SwimCameraLift`, and there is a feedback loop feeding it. The lift target is gated on `surfaceSwim = IsSwimming && !IsUnderwater && !IsWading`, so the moment the eye dips under, the lift that holds the eye clear of the water switches off and eases to zero, the eye drops a further 0.8 m, and being further under keeps it under. The tint already solves exactly this shape of problem with a dead zone between `SubmersionOn` and `SubmersionOff`; the lift has no equivalent hysteresis and needs one, or the float has to bring the body back up without the camera's help. Note this is pre-existing and unrelated to the fog work below: it reproduces identically with the old and new `UnderwaterFogNear`/`UnderwaterFogDeep` values.
-Check `FloatEngageDepth` by eye: at 0.7 the head bone sits ~0.19 m under the surface, which is the "submerged to the neck" depth. It is the single knob that starts the float that slows the fall and the swim clip together, so raising or lowering it moves both and they cannot drift apart. `test_swim_entry.gd` guards the pairing but cannot tell you whether the depth looks right.
-Jumping into the water plays a cannonball-like pose, to fix later. `UpdateBodyPitch` targets `CameraController.LookPitch - 90 deg` the moment `IsUnderwater` goes true, and `IsUnderwater` only needs the eye 0.15 m under, so the body starts rotating to prone while the plunge is still going and the float has not caught it yet. A downward look makes it far worse: a -57 deg look asks for -147 deg of body pitch, and `BodyPitchSpeed = 360` deg/s covers that in about a quarter second, with `Swimming Loop` already playing. A prone body somersaulting mid-fall is the cannonball. It needs a transition that holds the upright fall until the plunge is actually arrested, and probably a dedicated entry/impact clip. Only probed with a hard downward look, so how bad it is with a level look is unmeasured.
-### Camera
-Remove the temporary F1 first/third person toggle before shipping — the game is first person (see docs/design/ControlsDecisions.md). The F3 debug chase camera is a working second view again, not dead weight, so keep it while debugging; delete `DebugChaseCamera` and `Scripts/Player/DebugChaseCamera.cs` before shipping if a chase view is not wanted.
-Tide the underwater tint to taste: `UnderwaterTint`, `UnderwaterFogNear/Deep`, `UnderwaterDepthRange`, `UnderwaterFogEnergy` on CameraController, and the window/mirror colours on Shaders/water_from_below.gdshader are all live parameters that have never been looked at by a human. There is deliberately no Snell split and no circle overhead — splitting on the critical angle reads as a spotlight, not water — so the ceiling is one continuous graded surface identified by its ripples and shimmer. A test guards both the removal of the split and the window/mirror luma ratio, so a disc cannot come back through the parameters. The remaining tuning is aesthetic.
-Confirm the underwater tint with a human eye, especially looking forward and down: the tint is faded across the surface rather than switched, so there is no flash of no filter on the way in or out, and the fade rate turns out to be irrelevant to the problem that was reported. Driving `SubmersionFadeSpeed` to 60/s put the tint at 1.0 on the first frame past the threshold with no ramp at all and moved the forward-and-down view by about nothing, so it stays at 20/s. The cause was that the water haze was far too weak: `UnderwaterFogNear`/`UnderwaterFogDeep` were 0.03 and 0.16, so looking forward and down the tint barely registered. That view is the hard case because the ceiling mesh in `water_from_below.gdshader` is edge on there and contributes nothing, leaving the haze as the only thing that can read as underwater, which is also why looking straight down always looked clean. They were 0.9 and 2.2, so the haze was strong enough to carry the tint on its own, and have since been **retuned by hand to 0.06 and 0.4**, which `test_underwater_filter.gd` now fails: it still requires `min_under_fog > 0.5` and measures 0.063. The submerged haze is therefore now *lighter* than the world's own 0.45 air fog, which inverts the original reasoning recorded in the comment at `CameraController.cs:22-26` that it "has to be denser than the air haze, not lighter". That reasoning is not confirmed for the new pair. Decide whether the gentler density is the intended look, in which case the test threshold and the comment both need to give way, or whether it is temporary and the haze is still too weak. Note the filter's fade checks are separately flaky and that needs fixing regardless — see below. One thing that must **not** change: above the surface the camera carries its own environment at *zero* density, deliberately. The world's own environment has 0.45 of blue aerial fog in it, and the camera's zero density is the only reason that never shows up; blending the density up from the world's value instead was tried and puts a blue haze over the entire above-water look, which is not wanted. So the density is `full * _submersion` and the water haze is simply made strong enough, rather than the density being rebased onto the world's value. `tools/test_underwater_filter.gd` pins both halves: exactly 0 above the waterline with the filter cleared, and above 0.5 under it. Its fade assertions are frame-timing flaky and need a settle-based check instead of a per-frame sample: three runs of identical code gave 1, then 3, then 2 failures, with `filter fades through intermediate values` sampling 0 and then 2 samples and the waterline check flipping between 1.000 and 0.000. Reading that back from a script needs `UnderwaterFogDensity` on CameraController, because `Camera3D.Environment` from a script gets the world's environment back rather than the camera's own and silently measures the wrong thing; and writing a C# `[Export]` float from GDScript reads back as having taken when the C# field never saw it, so do not A/B the tint by overriding those exports at runtime. 0.9 and 2.2 are reasoned rather than looked at, so they are the first thing to adjust by eye. The lift half of the original flash is still real and fixed separately: the swim lift was hard assigned the instant looking down lowered its target, dropping the eye a full `SwimCameraLift` (0.8 m) in one frame, past the surface and fully underwater, while the tint was still fading up from nothing; it now eases at `SwimLiftSpeed`, costing 0.8 / 6 = 0.13 s, and reaches zero at exactly `DiveLookDownDeg`, so the teleport used to fire on precisely the frame the dive engaged. If treading ever shows the bob pulsing in the tint, the fix is a wider `SubmersionOff` dead zone, not a different fade.
-The surface seen from above is no longer a flat 0.72 alpha sheet. `Shaders/water_from_above.gdshader` reads the scene depth, works out how much water the view ray actually crossed, and fades the bottom through it with Beer-Lambert, with a Fresnel term on top for the reflection. So shallow water is clear looking straight down, the bottom fades gradually with depth, and the same water turns to a mirror as the view flattens out, with no cutoff anywhere. `tools/probe_above.gd` measures it as transmission of a red marker through the surface and is what the numbers were tuned against: 0.63 at 1.5 m looking down, 0.15 at 8.7 m, nothing left by 16 m, and 0.06 at 1.5 m once the view is down to 15 deg above horizontal. What has *not* been done is looked at by a human, so `extinction`, `shallow_opacity`, `fresnel_power` and `reflect_strength` are all still live. In particular the reflection is deliberately weak — at 15 deg it only mixes 17% of the sky colour, because a literal mirror out there reads as chrome rather than water — so raise `reflect_strength` if the far water needs to feel more like a mirror.
-### Land Movement
-We need to implement a slip mechanic so that players get up steep slopes just by jumping.
-
-## Water Tint Compositor
-### Verified
-`Scripts/World/WaterTintEffect.gd` and `Shaders/water_tint.glsl` reconstruct a world position from the depth buffer and tint per pixel. This part is measured, not assumed: `tools/probe_effect.gd` places three reference plates at known world heights that straddle the waterline (one below the surface, two above), hides every other mesh so nothing can occlude them, and checks the reconstruction against the exact height each sample was aimed at. It reports 12 of 12 samples within 0.5 m, worst error 0.11 m, and then switches the same samples to the real pass and confirms the submerged ones land on the deep-water colour while the dry ones are untouched. Two things had to be true for that to work and neither is guessable: Godot 4.7 renders **reverse-Z** (1 at the near plane, 0 at the far plane), and the view-projection matrix must not be inverted at all — see `docs/past/WORKLOG-09-28-2026.md`, Session 3.
-
-### Still to do
-Wire the effect into the game. It is currently instantiated only by `tools/probe_effect.gd`; nothing in `Scenes/World.tscn` creates it, so it has never affected an actual play frame. It needs a scene-owned node with a lifetime that covers every relevant camera and scenario (the head camera and the F3 chase camera both render the water), and it has to survive a resize, a water body being added or removed, and teardown without leaking a RID.
-
-Decide what happens to the Environment fog. The compositor now decides the underwater tint per pixel, which is strictly better than a single camera-wide density, but the camera still duplicates the world environment and drives its own `FogDensity`, and that fog is baked into every pixel *before* the compositor runs. So while the eye is at the waterline the world fog is already in the framebuffer and the compositor can add tint on top of it but cannot take it back off the dry half. The three candidates, in the order I would try them: turn the camera's underwater fog density to zero and let the compositor own the tint entirely, which makes the two systems consistent but means the ceiling and the window still need to come from the shader; keep a single global density and accept that the split frame is approximate; or move the fog to a volumetric so it can be masked per pixel, which is the most correct and by far the most work. This is a design call and should be a decision rather than a default.
-
-Confirm the compositor's tint against a human eye at the waterline. The numbers are right and the split is provably per pixel, but nobody has looked at a half-submerged frame.
-
-### Notes for whoever picks this up
-Do not reintroduce a matrix inverse. `WaterTintEffect.gd` passes the camera as a basis plus `near`, `far` and the two projection scale factors, and the shader does one division and a rotation. Inverting the view-projection instead looks equivalent and is not: at `near = 0.05` against `far = 4000` the inverse holds values of order 1e4 that get differenced against world coordinates of order 1e3, and float32 cancels away every significant digit, producing a frame that looks plausible and is uniformly wrong. The effect also runs a one-time CPU round-trip of the same arithmetic and prints its worst error, so a regression here is visible on the first frame rather than as a subtle visual drift.
-
-The debug path is worth keeping. `effect.debug = true` encodes the reconstructed world XYZ and a pixel identifier into the colour target, which is how the probe gets exact numbers instead of a judgement call. The channels are sRGB-encoded by the backbuffer, so the probe linearises them on read; alpha is not sRGB-encoded and must be read raw.
-
+# Work To DO
 
 # Next Work To Do
-
+## Rune System
 - Implementing Rune system
     - passive runes
     - active runes
@@ -83,17 +40,64 @@ The debug path is worth keeping. `effect.debug = true` encodes the reconstructed
 - Rendering the distance (not started, nothing decided yet)
     - how far props, foliage and the water plane visibly carry before culling or fog takes over, and whether the stickman and the nature packs need LOD
 - make some goddamn runes and their effects
+## Animation
+- Channeling
+- Preparing to cast
+- cast glpyh
+- Melee Glpyh
+    - punching
 
-## Revisit before changing: splitting `CameraController.cs`
-**Do not start this as a refactor. Look at it first, then decide whether to change anything at all.** The proposal was to split `Scripts/Player/CameraController.cs` (367 lines) into three — water, land, and the debug third-person camera — as `partial` classes. Two of the three do not correspond to anything in the file, and the tool does not fit the problem, so the plan needs revisiting rather than implementing.
+## Glyphs to code
+- Ranged attack
+    - projectile
+    - aqua 
+    - kindling
+    - skillshot
+- Melee attack (Terra, Kindling)
+    - punching animation
+    - Terra
+    - Maybe add a stone fist on hand when casting
+    - Target Direction
+- Healing totem
+    - Anima
+    - Calling
+    - target terrain in range
+- Passive (Shaping)
+    - For now movement speed
+- Double jump 
+    - Technique
+    - Zephyr 
+    - Flowing
+    - jump button twice
+    - not recastable until hit ground
+- Air Dash
+    - Technique
+    - Zephyr 
+    - Flowing
+    - jump then run button midair
+    - not recastable until hit ground
+- Searing Beam, channel in a direction (Inferno, Kindling)
 
-**There is no land section.** The exports are mouse look and pitch limits, FOV, mouse capture, the swim camera lift, the underwater look block (lines 21-36), submersion thresholds (46-57), and the view-mode block (61-65). Land movement lives in `PlayerController.cs`. A land file would be empty.
+## Controls
+- Aiming
+    - Translucent dot in middle of screen with a small circle
+    - When in use Crosshairs are implemented
+    - When a spell is being held or charged, use a colored circle between dot and outer circle to indicate how long its being held
+- Spell Preview
+    - F key
+    - hold to show
+    - will be different for different skills
+- Cast glpyh
+- Select glpyh
+    - Hotkey Toolbar
+        - Tab to change
+    - Navigating glyphs
+        - scroll wheel
 
-**The debug camera is already split out.** `Scripts/Player/DebugChaseCamera.cs` is its own file with its own `.uid`, and `CURRENT_TODO.md` (Camera → F1/F3 item) has it marked for deletion before shipping. A third partial would reorganise something already reorganised and temporary.
-
-**`partial` is the wrong tool here, and the reason is not file size.** It splits a *type*, not a node — nothing is imported or merged; the compiler emits one class and the IDE shows one class in regions. Every piece keeps access to every private field, so it changes where code is read without changing what it depends on: `_submersion` is written by water code, read by the pitch clamp, and read by `PlayerController`, and three files make that harder to see rather than smaller. It also stays invisible in the scene tree, so nothing is gained at the level Godot composes at. The decisive problem is in the Water Tint Compositor item above: the head camera and the F3 chase camera both render the water, and a `partial class CameraController` binds the look to one camera node, so the other cannot have it without duplicating the partial or the code. A child `Node` can be instanced onto both rigs, or one node can follow whichever camera is `Current`.
-
-**The water block is the only part with an argument behind it** — roughly 130 of the 367 lines: the exports at 21-57, the fields at 76-78, the environment duplicate in `_Ready` (114-129), and `UpdateUnderwaterLook()` (282-365), which at 84 lines is the largest single method in the file. But it is not cleanly separable, because the water concern here is not only visual: `MinPitchInWater` / `MaxPitchInWater` (8-9) and `SwimCameraLift` mean submersion changes how the camera *behaves*, and those feed the shared clamp in `_UnhandledInput`. Lifting water out as a visual node leaves it either owning camera behaviour, making it a large node, or publishing a submersion signal the camera reads, which is roughly what `_submersion` already is. That coupling is intentional and should not be tidied away on the assumption it is accidental.
-
-**Open question for the revisit:** whether the look *data* should become a `.tres` shared by both rigs. If so this is the same work as `## Water Look Ownership` at the top of this file, not a separate task, and doing the split first means doing it twice. The smaller target if anything moves at all is one file for the underwater look and submersion, with `CameraController` keeping the pitch clamp and the lift.
-
+# Leave For Another Time
+## Water UX
+Make underwater visuals better for user experience.
+## Non-Ocean Water
+- rivers
+- lakes
+## Ledge mechanics
