@@ -15,7 +15,7 @@ Glyphwake/
 │
 ├── 🎮 Scenes/
 │   ├── World.tscn                   # Main scene — Terrain3D island + water + player
-│   ├── Player.tscn                  # CharacterBody3D player (controller + camera + stickman)
+│   ├── Player.tscn                  # CharacterBody3D player (controller + camera + stickman + glyph runtime)
 │   ├── Stickman.tscn                # Low-poly stickman model instance
 │   └── TestWorld.tscn               # Scratch/test world scene
 │
@@ -26,19 +26,62 @@ Glyphwake/
 │                                  #   not yet wired into the scene)
 │
 ├── 💻 Scripts/                      # C# runtime + data (the shipped game)
+│   ├── Core/                        # Shared, project-wide: no dependency on a specific feature
+│   │   ├── CollisionLayers.cs       # Static layer/mask constants
+│   │   ├── AnimationIds.cs          # The 8 movement directions + the clip set a character can reach
+│   │   ├── ILookSource.cs           # Interface: anything that can report where it looks, in radians
+│   │   ├── LocomotionMode.cs        # Enum: the single authoritative description of how the body is moving
+│   │   ├── LocomotionState.cs       # Per-frame body/submersion facts the state machine consumes
+│   │   └── PlayerRig.cs             # Resolves the player node tree + skeleton once, hands them out
 │   ├── Player/
-│   │   ├── PlayerController.cs      # CharacterBody3D: WASD + jump + gravity + swim/wade
-│   │   └── CameraController.cs      # First-person head camera (mouse look, dive look)
+│   │   ├── Data/                    # The character itself and its runtime resource pools
+│   │   │   ├── PlayerController.cs  # CharacterBody3D: WASD + jump + gravity + swim/wade + air-jump technique
+│   │   │   ├── PlayerResources.cs   # Mana/health/stamina pools + passive regen + TrySpend (the cost payer)
+│   │   │   └── PlayerTechniques.cs  # Technique→locomotion wiring: TryAirJump (check-pay-compute) + the decade height curve
+│   │   ├── Cameras/
+│   │   │   ├── CameraController.cs  # First-person head camera (mouse look, dive look)
+│   │   │   └── DebugChaseCamera.cs  # Second outside-view camera; borrows the viewport on demand
+│   │   └── Animation/Movement/      # AnimationTree state selection + the surface-swim pose
+│   │       ├── PlayerAnimator.cs    # Picks the AnimationTree state and speed from movement state + input
+│   │       ├── LocomotionGraph.cs   # One reachable clip + how far into it its state starts
+│   │       └── SurfaceSwimPose.cs   # Head level + both hands under the waterline while treading
 │   ├── World/
 │   │   └── WaterZone.cs             # Area3D water trigger: surface Y, Enter/Exit water
-│   └── Glyphs/                      # Pure Resource data model (1 glyph = 1 skill)
-│       ├── GlyphData.cs             # Base GlyphData Resource + GlyphCategory enum
-│       ├── ActiveGlyphData.cs       # Cast style, mana/cast/cooldown scaling, ScaledStat[]
-│       ├── PassiveGlyphData.cs      # Passive: Array<PassiveModifier>
-│       ├── GlyphTag.cs              # School/element classification tag
-│       ├── PassiveModifier.cs       # Tag-filtered additive/multiplier modifier
-│       ├── ScaledStat.cs            # StatKey + base + perPoint scaling
-│       └── StatKey.cs               # Enum of every scalable stat
+│   └── Glyphs/                      # Pure Resource data model (1 glyph = 1 skill) + the player-owned loadout
+│       ├── Active/
+│       │   └── ActiveGlyphData.cs   # Cast/effect mode, targeting, costs, Payload; numbers are base stats
+│       ├── Technique/
+│       │   └── TechniqueGlyphData.cs # Capability glyph: trigger + costs, no hotbar slot
+│       ├── Passive/
+│       │   ├── PassiveGlyphData.cs  # SelfModifiers + GlyphModifiers + Triggers
+│       │   └── PassiveTrigger.cs    # Event-driven spawn (burn on hit, refill on kill), own base stats + scalings
+│       └── Framework/               # Shared building blocks — no glyph-type specifics
+│           ├── GlyphCatalog.cs       # Which glyphs exist, in three typed lists; one resource ref in the scene
+│           ├── GlyphData.cs          # Abstract base: identity, school, elements, tags, BaseStats + Scalings, point guideposts
+│           ├── GlyphLoadout.cs       # Player-owned point allocation (Node): entries keyed by resource path, 100-point pool
+│           ├── GlyphLoadoutEntry.cs  # One glyph + the points that player put in it
+│           ├── StatValue.cs          # One base statistic: StatKey + base value
+│           ├── GlyphScaling.cs       # One scaling entry: StatKey + style + value, defined per glyph
+│           ├── GlyphScalingStyle.cs  # Enum: Linear / Quadratic / SquareRoot / Step
+│           ├── GlyphStats.cs         # Static StatAt/TryStatAt shared by glyphs and PassiveTrigger
+│           ├── SelfStatModifier.cs   # Modifier on the caster's own stat (Add/Percent/Multiply)
+│           ├── GlyphModifier.cs      # Modifier on other glyphs, filtered by school/element/tag
+│           ├── GlyphCost.cs          # One resource spend: amount, perPoint, perSecond
+│           ├── CostResource.cs       # Enum: Mana / Health / Stamina
+│           ├── GlyphCastMode.cs      # Enum: Impulse / Focus / Channel / Ritual
+│           ├── GlyphEffectMode.cs    # Enum: Instant / Channel / Anchored / OverTime
+│           ├── GlyphTargetType.cs    # Enum: Self / Single / Projectile / GroundPoint / Direction
+│           ├── GlyphAffects.cs       # Flags enum: Enemies / Allies / Self / Terrain
+│           ├── GlyphSchool.cs        # Enum: the 6 schools (essence of the effect)
+│           ├── GlyphElement.cs       # Enum: the 6 elements + None (what it is resisted by)
+│           ├── GlyphTag.cs           # Free-form tag with a stable Id, matched by Id
+│           └── StatKey.cs            # Enum of every scalable stat, split glyph-own vs caster-own
+│
+├── 🎴 Resources/                     # Authored .tres game data
+│   └── Glyphs/
+│       ├── GlyphCatalog.tres         # Which glyphs exist, in three typed lists. Scenes reference this once, never a glyph
+│       └── Techniques/
+│           └── DoubleJump.tres       # First glyph: Technique, Flowing, Zephyr+Anima; JumpCount Step-10, Mana 10 −0.5/pt
 │
 ├── 🧩 addons/
 │   └── terrain_3d/                  # Terrain3D addon (C++/GDExtension)
@@ -77,15 +120,27 @@ Glyphwake/
 ├── 🛠️ tools/                        # GDScript authoring/import scripts
 │   ├── import_island.gd             # Import island heightmaps → terrain
 │   ├── build_world.gd               # Build/rebuild the world scene
-│   ├── build_stickman.gd            # Rebuild stickman model
+│   ├── build_stickman.gd            # Regenerate Scenes/Stickman.tscn from the PolyOne FBX
+│   ├── build_catalog.gd             # Regenerate Resources/Glyphs/GlyphCatalog.tres (via ResourceSaver)
+│   ├── fix_refs.sh                  # Rewrite stale res:// refs after an on-disk file move
 │   ├── import_control.gd            # Import controller setup
-│   ├── test_*.gd                    # test_collision / test_spawn / test_swim / test_wade /
-│   │                                #   test_plunge / test_view / test_underwater_look /
-│   │                                #   test_underwater_filter / ...
+│   ├── run_tests.sh                  # Runs every test_*.gd headless, one line per test
+│   ├── test_*.gd                    # test_collision_layers / test_collision / test_spawn /
+│   │                                #   test_swim / test_wade / test_plunge / test_view /
+│   │                                #   test_underwater_look / test_underwater_filter /
+│   │                                #   test_glyph_loadout / test_glyph_catalog /
+│   │                                #   test_animation_clips / test_double_jump / ...
 │   ├── sample_control.gd
+│   ├── audit_*.gd                   # audit_feet / audit_heights / audit_phase /
+│   │                                #   audit_states / audit_stop
+│   ├── verify_island.gd
+│   ├── build_assets.gd
 │   └── probe_*.gd                   # probe_debug / probe_swim / probe_shot / probe_above /
 │                                    #   probe_effect (verifies the compositor's depth
-│                                    #   reconstruction against plates of known height)
+│                                    #   reconstruction against plates of known height) /
+│                                    #   probe_techniques / probe_airjump_arc (glyph runtime
+│                                    #   wiring + the raw jump arc) / probe_api /
+│                                    #   probe_cliff / probe_fall / probe_openair_input
 │
 └── 📚 docs/                         # This documentation set (see docs/README.md)
 ```

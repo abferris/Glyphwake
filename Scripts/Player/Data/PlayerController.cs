@@ -15,7 +15,13 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float JumpHeight = 1.5f;
     [Export] public float Gravity = -9.81f;
     [Export] public float ImpulseDecay = 4f;
-    [Export] public float MaxFallSpeed = -20f;
+    [Export] public float MaxFallSpeed = -100f;
+
+    // The share of the air jump's steering: how far the held input swings the horizontal
+    // velocity on a mid-air jump, without gaining or losing speed. Steering is a redirect of
+    // an existing arc, not air control from a standstill -- no held input means no redirect,
+    // and starting horizontal motion mid-air is the open feel question (see WORKLOG-10-02).
+    [Export(PropertyHint.Range, "0,1,0.05")] public float AirJumpRedirect = 0.5f;
 
     [Export] public float SwimSpeed = 3f;
     [Export] public float SurfaceSwimSpeed = 5f;
@@ -96,6 +102,7 @@ public partial class PlayerController : CharacterBody3D
     private Vector3 _swimVelocity = Vector3.Zero;
     private float _verticalVelocity;
     private bool _jumpHeld;
+    private int _airJumpsUsed;
     private float _diveCharge;
     private float _leanRoll;
     private float _leanPitch;
@@ -129,6 +136,13 @@ public partial class PlayerController : CharacterBody3D
     public string AnimationState => _animator?.CurrentState ?? "";
     public float AnimationSpeed => _animator?.PlaybackSpeed ?? 1f;
 
+    /// The player's techniques: what turns points in a <see cref="Glyphwake.Glyphs.TechniqueGlyphData"/>
+    /// into capability. Resolved by path in _Ready like the rig's nodes; a body without one
+    /// simply has no techniques.
+    public PlayerTechniques Techniques { get; private set; }
+
+    private const string TechniquesNodePath = "Techniques";
+
     public Vector2 SwimLeanDeg => new Vector2(_leanPitch, _leanRoll);
     public float LeanPitchRad => _leanPitch;
     public float LeanRollRad => _leanRoll;
@@ -141,6 +155,8 @@ public partial class PlayerController : CharacterBody3D
         FloorMaxAngle = Mathf.DegToRad(SlopeMaxAngleDeg);
 
         _rig = new PlayerRig(this);
+
+        Techniques = GetNodeOrNull<PlayerTechniques>(TechniquesNodePath);
 
         _graph = new LocomotionGraph(_rig.Anim);
         _animator = new PlayerAnimator(_graph);
@@ -266,17 +282,14 @@ public partial class PlayerController : CharacterBody3D
     /// Climbs a submerged step instead of treading against it.
     ///
     /// A swimmer heading for the bank meets the step with its feet still at the treading depth,
-    /// which is below the top of anything shallower than it, so the body stops dead against it
-    /// and treads there forever: the water is wadeable, but nothing ever puts the body on the
-    /// floor that would make it wading. This lifts the body over the step instead, and only over
-    /// a step low enough that the top of it is shallower than the body was already floating in --
-    /// see WadeStepUpHeight -- so the handover afterwards is the ordinary one, feet on the floor,
-    /// submersion under WadeHandoverDepth, ground clips. It is a lift rather than a proper step,
-    /// so it can clip the lip of the step on the way over, which is cheaper than a swept test and
-    /// is not visible while the body is still in the water.
+    /// below the top of anything shallower than it, so the body stops dead and treads there
+    /// forever: the water is wadeable, but nothing ever puts the body on the floor that would make
+    /// it wading. This lifts the body over -- but only over a step low enough that its top is
+    /// shallower than the body was already floating in (<see cref="WadeStepUpHeight"/>), so the
+    /// handover afterwards is the ordinary one. It is a lift rather than a swept test, so it can
+    /// clip the lip of the step, which is cheaper and not visible while the body is in the water.
     ///
-    /// The rise it acts on was sampled before the move, by SampleWadeStepUpRise, so that the
-    /// settle could gate on the same number.
+    /// The rise it acts on was sampled before the move, so the settle can gate on the same number.
     private void WadeStepUp()
     {
         if (_state.Mode != LocomotionMode.SurfaceSwimming || !IsOnWall())
@@ -291,16 +304,16 @@ public partial class PlayerController : CharacterBody3D
     /// How far the floor a stride ahead of the body sits above its feet, or negative infinity when
     /// there is no floor there or the body is not heading anywhere.
     ///
-    /// Sampled once a frame and read by both WadeStepUp and the shallow-floor settle, because two
-    /// decisions hang off it and they have to come out the same. The lift will only take a step
-    /// this size; the settle is the handover the lift is setting up, so it may only stand down the
-    /// surface float when there is a step of this size to hand over to. Asked separately the two
-    /// can disagree, and the failure is a body on a bank too steep for either: the settle stands
-    /// the float down over shallow floor it has no way to reach, the body drops off the surface to
-    /// no purpose, and it sinks under water it should have been treading on top of. Measured
-    /// before SimulateSwim uses it, so both see one number for the frame; Mode is SurfaceSwimming
-    /// only when IsUnderwater is false, which is the branch that samples it, so the value is never
-    /// stale by the time WadeStepUp reads it after the move.
+    /// Sampled once a frame and read by both WadeStepUp and the shallow-floor settle, because the
+    /// two decisions hang off it and have to agree: the lift will only take a step this size, and
+    /// the settle may only stand the surface float down when there is a step of this size to hand
+    /// over to. Asked separately they can disagree, and the failure is a bank too steep for
+    /// either -- the settle stands the float down over shallow floor the body cannot reach, and it
+    /// sinks under water it should have been treading on.
+    ///
+    /// Measured before SimulateSwim uses it, so both see one number for the frame. Mode is
+    /// SurfaceSwimming only while IsUnderwater is false, which is the branch that samples it, so
+    /// the value is not stale by the time WadeStepUp reads it after the move.
     private void SampleWadeStepUpRise()
     {
         _wadeStepUpRise = float.NegativeInfinity;
@@ -357,8 +370,8 @@ public partial class PlayerController : CharacterBody3D
 
         // Pivot the surface-swim lean around the head so the head leads and the body angles
         // behind it. The pivot is the head bone's *animated* position, so the clip's own head
-        // motion is preserved while the lean itself no longer displaces the head (which used
-        // to swing it under the waterline).
+        // motion is preserved while the lean itself does not displace the head (which would otherwise
+        // swing it under the waterline).
         //
         // The vertical component is pinned to a fixed player-space anchor rather than to the
         // previous frame's height. Pinning to the previous frame only re-anchors, so the clip's
@@ -408,8 +421,29 @@ public partial class PlayerController : CharacterBody3D
         if (groundedNow)
             _verticalVelocity = direction.LengthSquared() > 0.0001f ? 0f : -2f;
 
-        if (groundedNow && Input.IsPhysicalKeyPressed(Key.Space) && !_jumpHeld)
-            _verticalVelocity = Mathf.Sqrt(JumpHeight * -2f * Gravity);
+        // Landing hands the mid-air jump chain back: the counter resets on any grounded frame,
+        // so a technique that buys several air jumps chains until the points run out of them,
+        // and the ground jump starts a fresh one.
+        if (groundedNow)
+        {
+            _airJumpsUsed = 0;
+            if (Input.IsPhysicalKeyPressed(Key.Space) && !_jumpHeld)
+                _verticalVelocity = Mathf.Sqrt(JumpHeight * -2f * Gravity);
+        }
+
+        // The technique fires on the same edge the ground jump does -- a press, not a hold.
+        // TryAirJump is the atomic check-pay-compute: out of jumps or out of mana means
+        // nothing happens and nothing was spent.
+        if (!groundedNow && Input.IsPhysicalKeyPressed(Key.Space) && !_jumpHeld && Techniques != null)
+        {
+            float airJumpHeight = Techniques.TryAirJump(_airJumpsUsed, JumpHeight);
+            if (airJumpHeight > 0f)
+            {
+                _verticalVelocity = Mathf.Sqrt(airJumpHeight * -2f * Gravity);
+                RedirectAirJump(input);
+                _airJumpsUsed++;
+            }
+        }
 
         _jumpHeld = Input.IsPhysicalKeyPressed(Key.Space);
 
@@ -417,6 +451,24 @@ public partial class PlayerController : CharacterBody3D
         _verticalVelocity = Mathf.Max(_verticalVelocity, MaxFallSpeed);
 
         Velocity = _horizontalVelocity + _impulseVelocity + Vector3.Up * _verticalVelocity;
+    }
+
+    /// Swings the horizontal velocity toward the held input on a mid-air jump, keeping its
+    /// speed: a redirect of the existing arc, not a push and not a brake. No held input means
+    /// no redirect, and no horizontal speed means nothing to steer -- starting motion from a
+    /// standstill mid-air is air control, which is the open feel question, not this.
+    private void RedirectAirJump(Vector2 input)
+    {
+        Vector3 direction = GlobalTransform.Basis.X * input.X - GlobalTransform.Basis.Z * input.Y;
+        if (direction.LengthSquared() < 0.0001f)
+            return;
+
+        float speed = _horizontalVelocity.Length();
+        if (speed < 0.0001f)
+            return;
+
+        Vector3 swung = _horizontalVelocity.Lerp(direction * speed, AirJumpRedirect);
+        _horizontalVelocity = swung.Normalized() * speed;
     }
 
     private void SimulateSwim(Vector2 input, float dt)
@@ -463,25 +515,25 @@ public partial class PlayerController : CharacterBody3D
                 if (displacement >= 0f)
                     engage = 1f;
 
-                // You float in water you cannot touch the bottom of, and you stand in water you
-                // can. The float parks the feet a fixed depth under the waterline, so over any
-                // shelf shallower than that the feet sit below its top edge: the body cannot
-                // climb the step, and because treading keeps the feet submerged past
-                // WadeHandoverDepth, AtSwimDepth holds the swim look and the state never reaches
-                // wading either. The visible result is a body pressed against a submerged step,
-                // treading, in water it is standing-depth in. So where the floor under the body
-                // is shallow enough to wade in, the float gets out of the way and lets it land
-                // there, handing over through the ordinary wading path -- OnFloor, submersion
-                // under WadeHandoverDepth, ground clips. The descent stays at swim speed rather
-                // than the fall limit, because crossing a shallow spot is a swim down, not a
-                // drop, and the floor arrives well before free fall would.
+                // You float in water you cannot touch the bottom of, and stand in water you can. The float parks
+                // the feet a fixed depth under the waterline, so over any shallower shelf the feet
+                // sit below its top edge: the body cannot climb it, and because treading keeps the
+                // feet past WadeHandoverDepth, AtSwimDepth holds the swim look and the state never
+                // reaches wading either. The visible result is a body pressed against a submerged
+                // step, treading, in water it is standing-depth in.
+                //
+                // So where the floor under the body is shallow enough to wade in, the float gets out
+                // of the way and lets it land there, handing over through the ordinary wading path
+                // -- OnFloor, submersion under WadeHandoverDepth, ground clips. The descent stays at
+                // swim speed rather than the fall limit, because crossing a shallow spot is a swim
+                // down, not a drop, and the floor arrives well before free fall would.
                 //
                 // Shallow floor on its own is not enough to stand the float down: it is only a
-                // handover if there is somewhere to hand over to. WadeStepUpRise is the same
-                // measurement the lift acts on, so this waits for a step the body could actually
-                // take rather than any floor at all -- otherwise a bank too steep to climb, which
-                // is shallow floor with nothing behind it, stands the float down for good and the
-                // body sinks out of sight under water it was treading on top of a moment before.
+                // handover if there is somewhere to hand over to. WadeStepUpRise is the measurement
+                // the lift acts on, so this waits for a step the body could actually take -- a bank
+                // too steep to climb is shallow floor with nothing behind it, and standing the float
+                // down over it sinks the body out of sight under water it was treading on a moment
+                // before.
                 bool overShallowFloor = _state.IsOverShallowFloor
                     && !float.IsNegativeInfinity(_state.GroundY)
                     && _wadeStepUpRise <= WadeStepUpHeight;
@@ -535,6 +587,7 @@ public partial class PlayerController : CharacterBody3D
         PhysicsDirectSpaceState3D space = GetWorld3D().DirectSpaceState;
         Vector3 origin = position + Vector3.Up * 3f;
         PhysicsRayQueryParameters3D query = PhysicsRayQueryParameters3D.Create(origin, origin + Vector3.Down * 100f);
+        query.CollisionMask = CollisionLayers.GroundProbeMask;
         query.Exclude = new Godot.Collections.Array<Rid> { GetRid() };
         Godot.Collections.Dictionary hit = space.IntersectRay(query);
         if (hit.Count == 0)

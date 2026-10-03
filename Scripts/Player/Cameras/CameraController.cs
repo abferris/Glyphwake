@@ -5,12 +5,10 @@ namespace Glyphwake.Player;
 
 /// The head camera: where the player is looking, and what the world looks like through it.
 ///
-/// It used to reach into the character for its look pitch, and the character reached back
-/// into this class by name, so each could steer the other and neither owned the result --
-/// which is what produced the pitch feedback loop where swimming pitched the body down,
-/// which dropped the head, which switched off the lift, which dropped the eye further. The
-/// dependency now runs one way: this camera registers itself as the body's
-/// <see cref="ILookSource"/> and publishes a pitch; the body reads that and nothing else.
+/// The dependency runs one way: this camera registers itself as the body's
+/// <see cref="ILookSource"/> and publishes a pitch; the body reads that and nothing else. Two-way
+/// reach is what lets a pitch feedback loop form -- swimming pitches the body down, which drops
+/// the head, which switches off the lift, which drops the eye further.
 public partial class CameraController : Camera3D, ILookSource
 {
 	[Export] public float MouseSensitivity = 0.15f;
@@ -121,8 +119,8 @@ public partial class CameraController : Camera3D, ILookSource
 	}
 
 	/// Where this camera is looking, in radians. The body reads this and nothing else, so the two
-	/// can no longer steer each other: this camera decides where it looks, and the body decides
-	/// what to do with that.
+	/// cannot steer each other: this camera decides where it looks, and the body decides what to do
+	/// with that.
 	public float LookPitch
 	{
 		get => _pitch;
@@ -185,12 +183,10 @@ public partial class CameraController : Camera3D, ILookSource
 		float lookDown = Mathf.Clamp((pitchDownDeg - 10f) / 15f, 0f, 1f);
 		float targetLift = atSurface ? SwimCameraLift * (1f - lookDown) : 0f;
 
-		// Always eased, including when looking down while treading. This used to snap straight to
-		// the target whenever the target was below the current lift, which put the eye 0.8 m lower
-		// in a single frame the moment the view was pitched down far enough. Diving means looking
-		// down, so that teleport fired on the way in and the way out, dropping the eye deep enough
-		// to be fully underwater while the tint was still fading up: a stretch of clear, untinted
-		// deep water on every single crossing. Easing it costs 0.8 / SwimLiftSpeed, about 0.13 s.
+		// Always eased, including when looking down while treading. Snapping to the target whenever the
+		// target is below the current lift drops the eye 0.8 m in a single frame, and diving means
+		// looking down, so it would fire on the way in and the way out and leave a stretch of clear,
+		// untinted deep water on every crossing. Easing costs 0.8 / SwimLiftSpeed, about 0.13 s.
 		_currentLift = Mathf.MoveToward(_currentLift, targetLift, SwimLiftSpeed * dt);
 
 		float bodyPitch = _player != null ? _player.BodyPitch : 0f;
@@ -296,9 +292,9 @@ public partial class CameraController : Camera3D, ILookSource
 	//
 	// The environment stays assigned rather than being nulled out, and the density is taken to
 	// zero above the surface, so there is never a frame in which the camera has no filter at
-	// all. That matters because the filter used to be swapped on and off as a hard boolean,
-	// which put a one frame hole in it on the way through the surface: the eye crosses the line,
-	// the environment is cleared, and the tint only appears once the swap lands.
+	// all. Swapping the filter on and off as a hard boolean instead would leave a one-frame hole at
+	// the surface: the eye crosses the line, the environment is cleared, and the tint only appears
+	// once the swap lands.
 	private void UpdateUnderwaterLook()
 	{
 		if (_underwaterEnv == null)
@@ -352,6 +348,7 @@ public partial class CameraController : Camera3D, ILookSource
 
 		PhysicsDirectSpaceState3D space = GetWorld3D().DirectSpaceState;
 		PhysicsRayQueryParameters3D query = PhysicsRayQueryParameters3D.Create(from, to);
+		query.CollisionMask = CollisionLayers.CameraBoomMask;
 		if (_body is CollisionObject3D self)
 			query.Exclude = new Godot.Collections.Array<Rid> { self.GetRid() };
 		Godot.Collections.Dictionary hit = space.IntersectRay(query);
