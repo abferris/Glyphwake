@@ -3,9 +3,9 @@ extends SceneTree
 ## Walk-stop test: releasing the move keys while walking must not drop to the bare gait clip.
 ##
 ## When the keys let go mid-stride the input resolves to no direction while the body is still
-## moving, which used to select the base Walk/Diagonal clip -- a different pose -- for the rest
-## of the deceleration before Idle took over. That read as a twitch twice: once onto the bare
-## clip and once onto Idle, instead of finishing the step. The character must keep the gait it
+## moving. Selecting the base Walk/Diagonal clip there would be a different pose for the rest of
+## the deceleration before Idle took over, which reads as a twitch twice -- once onto the bare
+## clip and once onto Idle -- instead of finishing the step. The character must keep the gait it
 ## is already playing until it is slow enough for Idle.
 ##
 ## Input is injected with Input.parse_input_event, which feeds the physical key state the same

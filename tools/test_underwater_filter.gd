@@ -2,10 +2,10 @@ extends SceneTree
 
 ## Underwater filter seamlessness: breaking the surface must not flash.
 ##
-## The filter used to be swapped onto the camera as a hard boolean on IsUnderwater. The eye crosses
-## the waterline, the environment gets cleared, and the tint only lands once the swap does, so there
-## was a frame with no filter at all in it. Treading on the spot made it worse: the float nudges the
-## eye across the threshold repeatedly, and every crossing was a full pop of the tint on and off.
+## Swapping the filter onto the camera as a hard boolean on IsUnderwater leaves a frame with no
+## filter in it: the eye crosses the waterline, the environment gets cleared, and the tint only
+## lands once the swap does. Treading on the spot makes it worse, because the float nudges the eye
+## across the threshold repeatedly and every crossing would be a full pop of the tint on and off.
 ##
 ## The filter is faded now, and the environment is left on the camera with its density taken to
 ## zero instead of being detached. This walks the eye down through the surface at a swimming pace
@@ -24,8 +24,8 @@ const START_Y := 84.0
 # Slow enough that the fade gets sampled properly rather than jumped over in one frame.
 const STEP := 0.02
 const TOLERANCE := 0.05
-# The pitch sweep that used to teleport the eye, and how far the swim lift is allowed to move it
-# per frame on top of the measured interval.
+# The pitch sweep that would teleport the eye if the lift snapped, and how far the swim lift is
+# allowed to move it per frame on top of the measured interval.
 const LIFT_SWEEP := 24
 const LIFT_RISE := 45
 const LIFT_TOLERANCE := 0.02
@@ -159,11 +159,11 @@ func _physics_process(_delta: float) -> bool:
 
 	if phase == 4:
 		# Hold the eye above the water and sweep the view down past DiveLookDownDeg. Diving means
-		# looking down, and the lift used to be hard assigned the moment the target dropped, so
-		# pitching down put the eye a whole SwimCameraLift lower in one frame: straight past the
-		# surface and deep enough to be fully underwater, while the tint was still fading up from
-		# nothing. That was the flash, and it happened on every crossing because the swim lift
-		# reaches zero at exactly the angle the dive engages at.
+		# looking down, and hard-assigning the lift the moment the target drops would put the eye a
+		# whole SwimCameraLift lower in one frame: straight past the surface and deep enough to be
+		# fully underwater, while the tint was still fading up from nothing. That is the flash, and
+		# it lands on every crossing because the swim lift reaches zero at exactly the angle the
+		# dive engages at.
 		player.global_position.y = target_y
 		# flick the view down the way a player does, rather than easing it: the target lift has to
 		# go from the full SwimCameraLift to nothing between one frame and the next

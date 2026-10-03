@@ -22,8 +22,9 @@ const MAX_BODIES := 4
 ## constants at 128 bytes, which the camera matrix alone nearly fills.
 const BODY_FLOATS := 8
 
-## Underwater colour and the depth over which it thickens. These are the values the Environment fog
-## used to own, moved here so the look survives the handover.
+## Underwater colour and the depth over which it thickens. These live on the compositor effect
+## rather than on the Environment, so the look is one value in one place and survives the
+## environment handover intact.
 @export var tint: Color = Color(0.09, 0.31, 0.45)
 @export var depth_range: float = 14.0
 @export var max_path: float = 48.0

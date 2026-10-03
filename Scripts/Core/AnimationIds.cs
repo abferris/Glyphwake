@@ -18,12 +18,10 @@ public enum MoveDirection
 
 /// The character animation clips, and which of them this character can actually reach.
 ///
-/// The clip names used to be string literals scattered through the movement code, and the
-/// directional logic then ran <c>Contains("Backward")</c> and <c>Replace("Left", "Right")</c>
-/// over them to decide which clip to play: renaming a clip in the AnimationLibrary broke
-/// locomotion silently, and nothing reported it. The direction table below replaces that
-/// surgery with an explicit mapping, so the clip a given direction resolves to can be read
-/// off directly.
+/// The direction table below is an explicit mapping rather than string surgery over clip names,
+/// so the clip a given direction resolves to can be read off directly. Keep the names in sync
+/// with the AnimationLibrary: a name that is not in the library still builds a state, and that
+/// state plays nothing -- only the tests and <see cref="Glyphwake.Player.LocomotionGraph"/> say so.
 public static class AnimationIds
 {
     public const string Idle = "Idle";
@@ -45,9 +43,8 @@ public static class AnimationIds
 
     /// The five Backward clips in the library are not in this set, and that is deliberate
     /// rather than an oversight. Walking backwards plays the *forward* clip in reverse with
-    /// left and right swapped, which is what the character has always done; adding the
-    /// authored Backward clips would change how it looks, and that is a call to make by eye
-    /// rather than in a refactor.
+    /// left and right swapped; switching to the authored Backward clips changes how it looks,
+    /// which is a call to make by eye.
     public const bool BackwardClipsUsed = false;
 
     /// Which clip plays for a gait in a given direction.

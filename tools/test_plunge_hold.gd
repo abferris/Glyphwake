@@ -13,10 +13,9 @@ extends SceneTree
 ## reason.
 ##
 ## This drives a low ledge with the camera pitched down, because a player watching where they are
-## going is what exposed the second half of the report: UpdateBodyPitch keys off
-## UnderwaterSwimming, and a look-down camera asks for more than 90 degrees of pitch, so the body
-## used to somersault the instant the eye dipped under. Both have to be gone by the time the
-## water has the body.
+## going is the case that breaks it: UpdateBodyPitch keys off UnderwaterSwimming, and a look-down
+## camera asks for more than 90 degrees of pitch, so the body somersaults the instant the eye
+## dips under. Both have to be gone by the time the water has the body.
 ##
 ## Timing runs off _physics_process: headless idle frames run ~6x faster than the 60 Hz physics
 ## tick, so sampling from _process would miss most of the plunge.

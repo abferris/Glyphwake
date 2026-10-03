@@ -4,12 +4,11 @@ extends SceneTree
 ## the body is submerged to the neck.
 ##
 ## The WaterZone box spans y 55..105 around a water surface at y 80, so it reaches 25 m *above*
-## the water. Being inside the zone therefore only means the body is over the water, not in it:
-## EnterWater fired on the way off the ledge and the swim clip used to start while the player was
-## still in mid-air, tens of metres above the surface. The swim look now waits on
-## PlayerController.AtSwimDepth, which latches at the same FloatEngageDepth that starts the float
-## that slows the fall, so the animation and the buoyancy cannot disagree about when the
-## character counts as being in the water.
+## the water. Being inside the zone therefore only means the body is over the water, not in it, so
+## the swim look waits on PlayerController.AtSwimDepth rather than EnterWater -- otherwise the swim
+## clip starts while the player is still in mid-air, tens of metres above the surface. AtSwimDepth
+## latches at the same FloatEngageDepth that starts the float that slows the fall, so the animation
+## and the buoyancy cannot disagree about when the character counts as being in the water.
 ##
 ## Timing runs off _physics_process: headless idle frames run ~6x faster than the 60 Hz physics
 ## tick, so sampling from _process would miss most of the fall.

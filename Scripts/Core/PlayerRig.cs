@@ -5,17 +5,15 @@ namespace Glyphwake.Core;
 /// Resolves the player's node tree and skeleton once, and hands the results to everything that
 /// needs them.
 ///
-/// Four separate scripts each walked the same tree looking for the same handful of nodes by
-/// string literal -- "Head", "Visual/Anim", "Visual/Skeleton3D", and the bone named "Head" --
-/// and each one silently carried on without the node it wanted if the scene was rearranged.
-/// Renaming a bone in the AnimationLibrary or a node in Player.tscn broke the swim pose, the
-/// body pitch, and the camera lift independently, and nothing said so. The paths live here
-/// now, in one place, with one set of names to change.
+/// Everything walks the same node tree looking for the same handful of nodes by string literal
+/// -- "Head", "Visual/Anim", "Visual/Skeleton3D", and the bone named "Head" -- so the paths and
+/// bone names live here once, with one set of names to change. Bone names are part of the model
+/// contract rather than scene layout, but they resolve through the same place: renaming one and
+/// getting it wrong should be one failure to report, not several failing quietly.
 public sealed class PlayerRig
 {
-    /// Bone names are part of the model contract, not scene layout, but they are resolved
-    /// through here for the same reason as the node paths: one place to find out what is
-    /// missing, instead of four places failing quietly.
+    /// Bone names are part of the model contract, not scene layout, but they resolve through
+    /// here for the same reason as the node paths: one place to find out what is missing.
     public const string HeadBoneName = "Head";
     public const string LeftShoulderBoneName = "LeftShoulder";
     public const string RightShoulderBoneName = "RightShoulder";
