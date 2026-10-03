@@ -2,21 +2,19 @@
 
 # Next Work To Do
 ## Rune System
+- Glyph data model (storage) - DONE, see worklog
 - Implementing Rune system
+    - resolving modifiers flat -> percent -> multiply across a loadout
+    - cost and passive-modifier growth still linear-only (scaling styles only on glyph stats, see GlyphDecisions.md code notes)
     - passive runes
     - active runes
-    - some of this might have been started by
+    - techniques wired to locomotion (double jump done - wall jump, air dash, waterbreathing, spiderclimb left)
+    - status effects
 - Creating player interface
     - menus
         - player menu
         - rune setup menu
         - player options
-            - camera
-                - mouse to rotate
-                    - aim on center screen
-                - right click to rotate
-                    - aim on cursor
-            - wasd vs up down right left
             - casting style (click skill and click mouse vs skill smart cast where cursor is)
     - rune hud in game
     - rune slot selection
@@ -41,6 +39,9 @@
     - how far props, foliage and the water plane visibly carry before culling or fog takes over, and whether the stickman and the nature packs need LOD
 - make some goddamn runes and their effects
 ## Animation
+- Replace 16 discrete locomotion states with two blend spaces (walk, run)
+    - deletes most of the 240 generated transitions instead of maintaining them
+    - costs the AnimationTree-dock editability that generating the graph bought
 - Channeling
 - Preparing to cast
 - cast glpyh
@@ -64,12 +65,6 @@
     - target terrain in range
 - Passive (Shaping)
     - For now movement speed
-- Double jump 
-    - Technique
-    - Zephyr 
-    - Flowing
-    - jump button twice
-    - not recastable until hit ground
 - Air Dash
     - Technique
     - Zephyr 

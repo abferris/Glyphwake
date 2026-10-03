@@ -1,77 +1,116 @@
 # Player & Animation — Decisions & Design Notes
 
 Status: first-person movement + camera working; walk/run directional animation and
-swimming tooling in place (see `SwimmingDecisions.md` for the water specifics).
+swimming in place (the swimming design is folded into this file, further below).
 
 ## Model
 - Model: PolyOne "Free Pack - Stick Man".
-  - FBX: `Assets/PolyOne/Free Stickman/Model/Free Pack - Stick Man.fbx`
-  - Prefab: `Assets/Free Pack - Stick Man.prefab` (a copy also sits under
-    `Assets/PolyOne/Free Stickman/Prefabs/`).
-- Hierarchy: the root carries an `Animator` + `Stickman_Controler`; the child mesh
-  `SM_StickMan` also has an `Animator` whose avatar/controller are null. Always
-  fetch the Animator with `GetComponentInChildren<Animator>()`, never the root directly.
-- The prefab instance sits at `localPosition.y = -1.07` (mesh offset within the rig).
+  - FBX: `res://Assets/PolyOne/Free Stickman/Model/Free Pack - Stick Man.fbx`
+  - Clip manifest: `res://Assets/PolyOne/Free Stickman/Animation/stickman_clips.json`
+  - Texture: `res://Assets/PolyOne/Free Stickman/Texture/T_Stickmans_Color.png`
+  - The `Assets/` folder is the imported art source inside this Godot project — the name is
+    carried over from the Unity days, not a leftover reference to it.
+- Hierarchy: the FBX is instantiated by `tools/build_stickman.gd` into `Scenes/Stickman.tscn`
+  (do not hand-edit that file). In `Scenes/Player.tscn` it is the `Visual` child, which owns the
+  `Skeleton3D`, the `Anim` `AnimationPlayer`, and the `SurfaceSwimPose` `SkeletonModifier3D`. The
+  `AnimTree` is a direct child of the player root, pointed at `Visual/Anim`.
+- `Visual` sits at `y = 0.7` relative to the body origin.
 
 ## Movement
 - WASD to move, Space to jump. Movement is camera-relative — you move where
   you look.
-- Physics: CharacterController, not Rigidbody. Capsule settings: height 2,
-  radius 0.5, center (0,0,0), slope limit 55, step offset 0.3,
-  skin width 0.08.
-- Gravity is applied manually. Note: `CharacterController.isGrounded` is cleared by
-  `Move()`, so read/cache it right after moving (this has bitten the wading logic).
-- Script: `Assets/Scripts/PlayerController.cs`.
+- Physics: `CharacterBody3D`, not a rigid body. The capsule is a `CapsuleShape3D` on a
+  `CollisionShape3D` — radius **0.2**, height **1.79**, offset `y = 0.006`
+  (`Scenes/Player.tscn`). The slope limit is not a shape setting: `PlayerController._Ready` sets
+  `FloorMaxAngle` from the `SlopeMaxAngleDeg` knob (**60**), and `SlopeFullSpeedDeg` (**35**) is
+  where uphill starts costing speed.
+- Gravity is applied manually in `_PhysicsProcess`, and `IsOnFloor()` is read after the move —
+  `MoveAndSlide` clears the grounded flag, so reading it earlier reports the previous frame (this
+  has bitten the wading logic).
+- Scripts: `Scripts/Player/Data/PlayerController.cs` (body), `Scripts/Core/LocomotionState.cs`
+  (what it is doing), `Scripts/Core/PlayerRig.cs` (nodes, bones, capsule).
 
 ## Camera (first-person)
-- Script: `Assets/Scripts/CameraController.cs`. Mouse look with the cursor locked;
+- Script: `Scripts/Player/Cameras/CameraController.cs`. Mouse look with the cursor locked;
   the player body turns to face the look direction, so WASD is view-relative.
-- Lens: near clip 0.3, far clip 1000, and FOV forced to 70 in `Start`.
+- Lens: `FieldOfView` 70 applied in `_Ready` (the scene's own `fov = 45` is overridden at
+  runtime), near clip 0.1 from the scene, and the far clip left at Godot's default. Pitch is
+  clamped to `MinPitch`/`MaxPitch` (±85, stretched to ±90 in water). The camera implements
+  `ILookSource` and publishes its pitch, so the body reads the camera and nothing reaches back.
 - The eye follows the body's *actual* facing (`PlayerController.BodyPitch`), not the raw
   look pitch, so the camera eases between standing/diving instead of snapping.
 - Ground/wall handling: `cameraFloorClearance` keeps the eye from clipping the lakebed;
   a sphere-cast from the capsule centre (`CameraPivot` -> eye) is a backstop for walls.
-  Full water-camera behaviour is in `SwimmingDecisions.md`.
+  Full water-camera behaviour is in the Swimming section below.
 
 ## Animations
-Controller: `Assets/PolyOne/Free Stickman/Animation/Controler/Stickman_Controler.controller`.
+The clip library is **generated**: `tools/build_stickman.gd` imports the PolyOne FBX and writes
+`Scenes/Stickman.tscn` (34 clips) via `ResourceSaver`. Never hand-edit that scene — re-run the
+script.
 
-Decision: Walk/Run gaits use 8-way directional blend trees; swimming uses a single
-symmetric clip (no directional clips) because a breast stroke reads correctly from every
-angle. All of this is set up by the `Tools > Player` menu, in this order:
+Decision: locomotion plays **discrete per-direction clips** chosen from an explicit direction
+table, and the AnimationTree is a state machine **built in code**. This replaces the old Unity
+`.controller` and its five `Tools > Player` setup scripts, none of which exist any more.
 
-| Tool | Script | What it does |
-|------|--------|--------------|
-| Generate Directional Walk Clips | `DirectionalWalkGenerator.cs` | Bakes 8 directional clips into `Assets/PolyOne/Free Stickman/Animation/Directional`, blending the leg channels of `Walk.anim` / `Run.anim` (`CrossOverStrength` 0.35). |
-| Set Up Directional Movement | `DirectionalControllerSetup.cs` | Adds `MoveX` / `MoveZ` parameters and the 8-way blend square. |
-| Add Idle-Walk-Run Transitions | `StickmanAnimatorSetup.cs` | Adds the `Speed` parameter and Idle -> Walk -> Run transitions (thresholds 0.1 / 6). |
-| Set Up Locomotion Transitions | `LocomotionTransitionSetup.cs` | Adds `Speed` + `IsGrounded` parameters and Idle/Walk/Run + `Jumping Up` transitions (thresholds 0.1 / 6). |
-| Set Up Swim Animations | `SwimAnimationSetup.cs` | Adds `IsSwimming` / `IsUnderwater` / `SwimSpeed` (default 1), bakes the looping `Swimming Loop.anim`, and wires AnyState -> Swimming -> Idle. |
+| Part | Where | Role |
+|------|-------|------|
+| Clip names + direction table | `Scripts/Core/AnimationIds.cs` | `ClipFor(gait, direction)` resolves one of 6 ground clips per gait; `ReachableClips` is the 16 clips the graph is built from |
+| Graph construction | `Scripts/Player/Animation/Movement/LocomotionGraph.cs` | 16 states where every state reaches every other — 240 transitions plus one from `Start` — generated from a uniform rule |
+| What to play | `Scripts/Player/Animation/Movement/PlayerAnimator.cs` | Holds a `LocomotionGraph` rather than an `AnimationPlayer` and tells it where to go, so the rules and the mechanism can be read separately |
 
-- Order matters: generate clips -> directional movement -> transitions -> swim.
-- Source clips available under `Assets/PolyOne/Free Stickman/Animation/`: `Idle`, `Walk`,
-  `Run`, `Run Fast`, `Jumping Up`, `Sitting`, `Yelling`, `Swimming`, and the baked
-  `Swimming Loop`.
-- Known fix: the Idle/Walk/Run states previously had null (`{fileID: 0}`) transitions from
-  the old transition tools. These were repaired in the controller, and the tools now clear
-  the transition array before destroying so a re-run can't reintroduce them.
+- **Backward plays the forward clip in reverse**, with left and right swapped. The five authored
+  `Backward` clips stay unused (`BackwardClipsUsed = false`), stated rather than implied: switching
+  to them changes how the character looks, and that is a call to make by eye, not in a refactor.
+- **Swim uses symmetric clips**, not directional ones — `Swimming Loop` and `Swim Tread`. A breast
+  stroke reads correctly from every angle.
+- `ReachableClips` is the *reachable* set rather than the whole library, so a state cannot exist for
+  a clip the movement code cannot ask for. `Sitting`, `Yelling` and the five `Backward` clips are in
+  the library and deliberately absent.
+- **The graph is not editable in the AnimationTree dock.** That is the real cost of generating it.
+  The payoff is the next step: replace 16 of these states with two blend spaces, which deletes most
+  of those transitions instead of maintaining them.
+- **The clip list can drift from the generated library.** `tools/test_animation_clips.gd` compares
+  the built graph against the real library, and `LocomotionGraph.MissingClips` reports drift once up
+  front instead of one raw engine error per bad name.
+
+### Three measured things about AnimationTree
+None of these are guessable, and the first two assumptions made about them were both wrong.
+- `AnimationPlayer.speed_scale` is **ignored** once a tree drives it — measured at 1.0, 2.0, 0.5 and
+  -1.0, all of which played at 1.0x. Per-state speed is an `AnimationNodeTimeScale` inside each
+  state, addressed as `parameters/<state>/Speed/scale`. Measured: 2.0 → 1.88x, 0.5 → 0.505x,
+  -1.0 → -1.035x, 0.0 pauses. **Negative is load-bearing** — backward walking is the forward clip in
+  reverse, and the jump clip is scaled to the arc it actually flies.
+- `AnimationNodeTimeScale.scale` appears in **neither** `get_property_list`, nor the C# bindings, nor
+  the class reference. It is registered as an AnimationTree *parameter*, so it has to be found by
+  reading the tree's parameter list rather than by looking at the node class.
+- `AnimationNodeAnimation.start_offset` is **ignored** unless `use_custom_timeline` is also set, and
+  the custom timeline must be set to the clip's *own length* or the clip is time-warped to fit it.
+  Measured: `start_offset` alone left the hand pose identical (0.308, 0.809, 0.133); with a
+  real-length custom timeline it moved to (0.357, 0.822, 0.09). That is what keeps
+  `Walk Diagonal Forward Right` starting halfway through its clip.
+
+### Testing notes
+- A driven `AnimationPlayer` reports `current_animation` as `""` and a fixed speed of 1.0, so
+  `PlayerController` exposes `AnimationState` / `AnimationSpeed` and the tests read those instead.
+- `test_stickman`'s first two stages compare authored poses by driving the `AnimationPlayer`
+  directly, which a driven player ignores — so the tree is switched off for those two stages and back
+  on once physics starts driving the character.
 
 # Swimming - Decisions & Design Notes
 
 Status: water look done; basic water interaction (float / dive / underwater swim) implemented;
-swim animations wired via tooling (pending in-editor playtest).
+swim clips generated and wired (pending in-editor playtest).
 
 ## Steps
-1. **Water look** - done: a URP/Lit transparent material on the scene's Water plane. (The
-   project runs URP 17.6, so built-in-RP water shaders do not work here.)
-2. **Water volume** - run `Tools > Terrain > Set Up Water Zone` once, then save the scene. It
-   removes the solid MeshCollider, turns the BoxCollider into a deep trigger whose top face is
-   the surface, and adds WaterZone (which records the world-space surface Y).
-3. **Swim animations** - run `Tools > Player > Set Up Swim Animations`: it adds the
-   `IsSwimming` / `IsUnderwater` / `SwimSpeed` params, bakes a looping `Swimming Loop.anim`
-   from the one-shot `Swimming.anim` (the source has Loop Time off, so it plays once and
-   freezes), puts it on the `Swimming` state (playback speed driven by `SwimSpeed`), and
-   wires AnyState -> Swimming (`IsSwimming`) / Swimming -> Idle.
+1. **Water look** - done: a transparent material on the scene's Water plane, plus a per-camera
+   underwater tint (`test_underwater_look`).
+2. **Water volume** - built by `tools/build_world.gd`: it removes the solid MeshCollider, turns the
+   BoxCollider into a deep trigger whose top face is the surface, and adds `WaterZone` (which records
+   the world-space surface Y). Water surface is y = 80.
+3. **Swim clips** - generated by `tools/build_stickman.gd` into `Scenes/Stickman.tscn`. The looping
+   stroke is a baked clip (`Swimming Loop`), since the source clip has looping off and would
+   otherwise play once and freeze; playback speed is driven by the time-scale parameter described
+   under [Three measured things about AnimationTree](#three-measured-things-about-animationtree).
 
 ## Swimming mechanics decisions (from earlier design)
 - Swim lookup: player enters/traverses the water the same way as walking — first-person
@@ -81,7 +120,7 @@ swim animations wired via tooling (pending in-editor playtest).
 - Underwater: player moves fully camera-relative in 3D - use the camera's pitch to aim. Look
   down = dive deeper, look up = surface. Horizontal WASD + camera yaw for lateral swimming.
 - Breast stroke (symmetric) is the anim to use underwater; NOT crawl. It plays the one
-  symmetric `Swimming.anim` for every direction, sped up while actively stroking
+  symmetric `Swimming Loop` clip for every direction, sped up while actively stroking
   (`swimVigorousSpeed`) so movement reads as vigorous and idle stays calm.
 - Underwater the whole body rotates to follow the camera (pitch + yaw), so swimming down
   looks like a dive. At the surface the body stays upright and only yaws.
@@ -106,7 +145,7 @@ NOTE: supersedes the earlier "at the surface the body stays upright and only yaw
 - The lean is rotated about the `Head` bone (`_visual.Position = headInBody − R·headPivot`),
   so the head keeps its world position while the body swings below it. This is the failed
   Attempt C pivot, now completed by a head leveler (below).
-- A `SkeletonModifier3D` (`Scripts/Player/SurfaceSwimPose.cs`, node `Visual/Skeleton3D/
+- A `SkeletonModifier3D` (`Scripts/Player/Animation/Movement/SurfaceSwimPose.cs`, node `Visual/Skeleton3D/
   SurfaceSwimPose`) cancels the lean on the `Head` bone each pass by writing the live
   world-level pose `playerBasis · flipY · headBonePose` back with `SetBoneGlobalPose`
   (NOT the deprecated `SetBoneGlobalPoseOverride` — see WORKLOG Session 4). Skeleton3D rolls
@@ -133,13 +172,19 @@ NOTE: supersedes the earlier "at the surface the body stays upright and only yaw
   this a wade-jump left the ground for a frame, flipped to the surface float (swim pose +
   `swimCameraLift`), then flipped back on landing - a visible pop.
 - Swim does NOT use directional clips: the symmetric breast stroke reads correctly from every
-  angle, so a single looping clip is used. (The Walk/Run gaits still use the 8-way blend trees
-  built by DirectionalWalkGenerator.)
-- The `Idle`/`Walk`/`Run` states had null ({fileID: 0}) transitions (the old transition tools
-  destroyed before clearing). Repaired in `Stickman_Controler.controller`; the tools now clear
-  the array before destroying so a re-run cannot null them again.
+  angle, so a single looping clip is used. (The Walk/Run gaits use discrete per-direction clips
+  from the direction table in `AnimationIds.ClipFor`.)
+- The old Unity transition tools destroyed states before clearing, leaving null (`{fileID: 0}`)
+  transitions on Idle/Walk/Run. That is Unity-only history and does not recur here: the graph is
+  generated whole, and `test_animation_clips.gd` asserts the state names are distinct, so two
+  reachable clips renaming into the same name would be caught.
 
-## Tuning knobs (PlayerController, "Swimming" header in the Inspector)
+## Tuning knobs
+All on `PlayerController` (`Scripts/Player/Data/PlayerController.cs`) unless noted. There is no
+`Swimming` header in the Inspector — the swim fields are a contiguous `[Export]` block after
+`AirJumpRedirect`, each documented by a prose comment above it in the source. `swimCameraLift` and
+the `collision*` camera fields are on `CameraController`.
+
 | Field | Purpose |
 |---|---|
 | swimSpeed | underwater stroke speed |

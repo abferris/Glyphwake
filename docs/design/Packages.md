@@ -1,87 +1,64 @@
 # Packages & Asset Packs
 
-Inventory of what was pulled into the project, why, and what each pack contains.
-(The project targets **Unity 6000.6.0f1** with **URP 17.6.0**, so built-in-render-pipeline
-shaders will not work here.) This was stuff with unity, so I'm not sure how much it will apply in game.
-I think a lot of the asset packages will need to be different as we are using godot instead of unity.
+Inventory of what is in the project, why, and what each pack contains.
 
-This is not what is current, so do not take much stock of this. We will be probably be replacing most of this.
+The project is **Godot 4.7** with the **C# (.NET) build**, Forward+ renderer
+(`project.godot`: `config/features=PackedStringArray("4.7", "C#", "Forward Plus")`).
 
-## Unity packages (`Packages/manifest.json`)
-| Package | Version | Use |
-|---------|---------|-----|
-| `com.unity.render-pipelines.universal` | 17.6.0 | URP — the whole project renders with this |
-| `com.unity.inputsystem` | 1.20.0 | New Input System (**only** input system in use; legacy `Input.*` throws) |
-| `com.unity.ai.navigation` | 2.0.14 | NavMesh, for future creatures |
-| `com.unity.timeline` | 6.6.0 | Cutscenes / sequencing |
-| `com.unity.postprocessing` | 3.5.4 | Volume post FX |
-| `com.unity.visualscripting` | 1.9.12 | Visual scripting |
-| `com.unity.ugui` | 2.6.0 | UI |
-| `com.unity.ide.rider` | 3.0.38 | IDE integration |
-| `com.unity.ide.visualstudio` | 2.0.26 | IDE integration |
-| `com.unity.test-framework` | 1.8.0 | Tests |
-| `com.unity.collab-proxy` | 2.13.6 | Unity Version Control |
+> Rewritten from the Unity inventory. Everything Unity-specific has been removed, and the
+> `Assets/` folder name is carried over from Unity — it is the imported art source *inside* this
+> Godot project, not a leftover reference to the old one.
 
-Plus the standard `com.unity.modules.*` set (animation, physics, terrain, terrainphysics,
-ui, uielements, particlesystem, audio, video, xr, etc.).
+## Engine + addons
+
+| Component | Version | Use |
+|-----------|---------|-----|
+| Godot | 4.7 (.NET) | Renderer is Forward+ |
+| C# / .NET | — | All runtime code under `Scripts/` |
+| `addons/terrain_3d` | 1.0.2 | Terrain3D — the island is a single region, no tiles to stitch |
+
+There is no input-plugin story to record: Godot's own input map is the only one, and the C# reads
+`Keyboard`/`Mouse` through it.
 
 ## Asset packs
 
-### PolyOne — Free Stickman — in use
-- `Assets/PolyOne/Free Stickman/`: `Model/` (`Free Pack - Stick Man.fbx`), `Prefabs/`,
-  `Animation/` (clips + `Controler/Stickman_Controler.controller` + `Directional/`),
-  `Materials/`, `SplitMeshes/`, `Scene/`, `Texture/`.
-- This is the **player model**. See `PlayerDecisions.md`.
-### Kenney Castle Kit — imported (CC0)
-- Source: `/mnt/c/Users/abfer/Downloads/Castle Kit by Kenney - 2pA966ztJJX`
-  (SketchUp OBJ export; license **CC0**).
-- Vendored to `Assets/KenneyCastleKit/` (`Source/` holds `castleKit.obj`,
-  `castleKit.mtl`, and `castleKit.mtl.bak` = the original bright palette; the active
-  `.mtl` is a deliberately darkened palette).
-- Imported by `Tools > Assets > Import Kenney Castle Kit`
-  (`Scripts/Editor/CastleKitImporter.cs`). Unity's OBJ importer merges the 159 groups, so
-  the tool splits the OBJ into **71 logical pieces** and writes `Meshes/` + `Prefabs/`
-  (one prefab per piece) and 11 URP/Lit materials.
-- 11 materials: `wall`, `wood`, `wallDark`, `roof`, `FrontColor`, `cotton`, `dark`,
-  `knightRed`, `king`, `knightBlue`, `roofRed`.
-- Status: tool written and validated offline (71 pieces, 21,877 tris); **not yet run in
-  Unity / not compile-tested**.
+Counts are models (`.fbx` / `.obj`) and textures actually present on disk. **In use** means a
+scene or build tool reads the pack; the rest are vendored source art, kept for later and currently
+referenced by nothing.
 
+| Pack | Path | Models | Textures | Status |
+|------|------|-------:|---------:|--------|
+| PolyOne — Free Stickman | `Assets/PolyOne/Free Stickman/` | 2 | 1 | **In use** — the player |
+| Terrain3D island | `Assets/Terrain/` | — | — | **In use** — the island |
+| ithappy — Fantasy_FREE | `Assets/ithappy/Fantasy_FREE/` | 41 | 1 | Vendored, unused |
+| EmaceArt — Slavic World Free | `Assets/EmaceArt/Slavic World Free/` | 213 | 12 | Vendored, unused |
+| SimpleNaturePack | `Assets/SimpleNaturePack/` | 24 | 1 | Vendored, unused |
+| Squared Snails — 3D Low-Poly Nature | `Assets/Squared Snails Studios/3D Low-Poly Nature Pack/` | 47 | 5 | Vendored, unused |
+| Polytope Studio — Lowpoly | `Assets/Polytope Studio/` | 30 | 34 | Vendored, unused |
+| Kenney Castle Kit (CC0) | `Assets/KenneyCastleKit/` | 1 | 3 | Vendored, unused |
 
-### ithappy — Fantasy_FREE
-- `Assets/ithappy/Fantasy_FREE/`: `Materials/`, `Meshes/` (41), `Prefabs/` (41),
-  `Render_Pipeline_Convert/`, `Scenes/`, `Textures/`.
-- Fantasy environment props. Two HDRP-only assets were deleted (no missing-script refs).
+### Notes per pack
+- **PolyOne — Free Stickman**: the player model. `Model/Free Pack - Stick Man.fbx`,
+  `Animation/stickman_clips.json` (the clip manifest), `Texture/T_Stickmans_Color.png`. Read by
+  `tools/build_stickman.gd`, which bakes it into `Scenes/Stickman.tscn` — so no scene references
+  the FBX path directly. See `PlayerDecisions.md`.
+- **Terrain3D island**: `heightmaps/island.r16`, `island_data/`, `layers/`, `island_assets.tres`,
+  and `splat_manifest.json`. Built by `tools/import_island.gd` / `tools/build_world.gd`; the one
+  pack a scene (`Scenes/World.tscn`) references by path. See `TerrainDecisions.md`.
+- **Kenney Castle Kit** (CC0): SketchUp OBJ export, kept under `Source/` + `Textures/`. The
+  darkened `.mtl` trick from the Unity importer is gone — there is no importer script any more,
+  and the pack is not wired into the world.
+- **Nature packs** (SimpleNaturePack, Squared Snails): candidates for island vegetation.
 
-### EmaceArt — Slavic World Free
-- `Assets/EmaceArt/Slavic World Free/`: `Materials/` (11), `Meshes/` (213),
-  `Prefabs/` (238), `Texture/`, `Terrain/`, `Skybox/`, `Scene/`,
-  `Post Processing_profile/`, `Plugin/`, `SourceFiles/`, `URP_Support/`.
-- Large medieval/village kit. Four broken assets were deleted up front.
+## Already cleaned up
+The Unity-only artifacts have been deleted across the packs — no `.prefab`, `.mat`, `.asset`,
+`.unitypackage`, `Prefabs/`, or `Render_Pipeline_Convert/` remains under `Assets/`. So the old
+"41 prefabs" / "238 prefabs" style counts no longer describe anything.
 
-### Polytope Studio — Lowpoly
-- `Assets/Polytope Studio/`: `Lowpoly_Environments/` (25 environment prefabs + sources),
-  `Lowpoly_Village/` (5 prefabs + sources), `Lowpoly_Demos/Environment_Free/`,
-  `Welcome_Screen/`.
+## Water
+Not a pack: `Shaders/water_from_above.gdshader` (drawn from above) and
+`Shaders/water_from_below.gdshader` (drawn from underneath only), plus `Shaders/water_tint.glsl`
+for the per-camera underwater tint. These are first-party and documented in `PROJECT_TREE.md`.
 
-### SimpleNaturePack
-- `Assets/SimpleNaturePack/`: `Models/` (24 FBX), `Prefabs/` (24), `Materials/`,
-  `Scenes/`, `Textures/`. Includes both HDRP and URP `.unitypackage` archives.
-- Trees, bushes, flowers, grass, ground, mushrooms, rocks, stumps. Source for
-  `NatureAssets.unitypackage` at the project root.
-- Note: this is the **2020.3** edition (v1.24), older than the Unity 6 project.
-
-### Squared Snails Studios — 3D Low-Poly Nature Pack
-- `Assets/Squared Snails Studios/3D Low-Poly Nature Pack/`: `Trees/` (22), `Stones/` (11),
-  `Mushrooms/` (6), `Other/` (9), `Clouds/` (4).
-- Second nature set, used for island vegetation/rocks alongside SimpleNaturePack.
-
-### Procedural Water Shader — unused / candidate to remove
-- `Assets/Procedural Water Shader/`: `Shaders/ProceduralWater.shader`, `Materials/`,
-  `Demo/`, plus HDRP + URP `.unitypackage`s.
-- The scene uses a simple flat transparent URP/Lit material instead, so this pack is not
-  wired up. Deferred delete candidate together with `Assets/Shaders/WaterSurface.shader`
-  and `Assets/Materials/WaterSurface.mat`.
-
-### TutorialInfo (URP template)
-- `Assets/TutorialInfo/`: the stock URP template readme/scripts. Not game content.
+The old `Assets/Procedural Water Shader/` pack and the URP `Assets/Shaders/WaterSurface.shader`
+are **gone** — they were never wired up, and the two `gdshader` files replaced them.
