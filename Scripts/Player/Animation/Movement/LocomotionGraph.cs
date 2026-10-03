@@ -6,10 +6,9 @@ namespace Glyphwake.Player;
 /// One reachable clip, and how far into it its state should start playing.
 public readonly struct GraphClip
 {
-    /// The clip's name in the AnimationLibrary. This is also the state name, so that the
-    /// AnimationTree reports the same strings the AnimationPlayer used to -- the GDScript
-    /// tests compare against clip names, and keeping the two identical means the tree can be
-    /// introduced without rewriting what those tests assert.
+    /// The clip's name in the AnimationLibrary. This is also the state name, so that a state in
+    /// the tree and a clip in the library are the same string -- the GDScript tests compare
+    /// against clip names.
     public readonly string Name;
 
     /// Where to start within the clip, as a fraction of its length. Always zero: a start offset
@@ -27,21 +26,21 @@ public readonly struct GraphClip
 /// The character's AnimationTree.
 ///
 /// This is a flat state machine with one state per reachable clip, and every state able to
-/// reach every other. That looks wasteful next to a hand-authored graph, and it is: 16 states
-/// means 240 transitions. It is also the honest description of what the code did before,
-/// which was <c>AnimationPlayer.Play(anyClip, blend)</c> from any clip to any other. Rebuilding
-/// it as a generated uniform rule keeps that behaviour identical and, more usefully, makes the
-/// graph replaceable: the next step is to collapse the sixteen ground states into two blend
-/// spaces, which deletes most of these transitions rather than maintaining them.
+    /// reach every other. That looks wasteful next to a hand-authored graph, and it is: 16 states
+    /// means 240 transitions. It is also exactly what <c>AnimationPlayer.Play(anyClip, blend)</c>
+/// gave -- any clip to any other -- and generating it from a uniform rule keeps that behaviour
+    /// identical while making the graph replaceable: the next step is to collapse the sixteen
+    /// ground states into two blend spaces, which deletes most of these transitions rather than
+    /// maintaining them.
 ///
 /// Every state is the same three-node shape -- clip, then a time scale, then out -- for one
-/// reason: a state machine cannot vary playback speed per state on its own, and the
-/// AnimationPlayer's own SpeedScale is ignored once a tree is driving it. The time scale node
-/// is what makes the jump-clip scaling and the backwards walk reversal survive the move.
+    /// reason: a state machine cannot vary playback speed per state on its own, and the
+    /// AnimationPlayer's own SpeedScale is ignored once a tree is driving it. The time scale node
+    /// is what makes the jump-clip scaling and the backwards walk reversal survive the move.
 ///
 /// None of this is editable in the AnimationTree dock. That is the trade for generating it: at
-/// 240 transitions a hand-authored resource is unreviewable, and the graph that replaces this
-/// one is a small number of blend spaces rather than a large number of transitions.
+    /// 240 transitions a hand-authored resource is unreviewable, and the graph that replaces this
+    /// one is a small number of blend spaces rather than a large number of transitions.
 public sealed class LocomotionGraph
 {
     /// The state machine's implicit entry node.
@@ -93,12 +92,31 @@ public sealed class LocomotionGraph
         return _player.GetAnimation(name)?.LoopMode ?? Animation.LoopModeEnum.Linear;
     }
 
+    /// The reachable clips that the player's library does not have.
+    ///
+    /// The graph is still built for them -- one missing clip must not stop the character
+    /// animating the fifteen that exist -- but <see cref="Build"/> reports them once, up front.
+    /// Without that, the only symptom is one raw engine error per missing clip from whichever
+    /// lookup happened to touch it, which names neither the clip that is wrong nor the list it
+    /// came from. Uses HasAnimation rather than GetAnimation for the same reason: the check does
+    /// not log.
+    public List<string> MissingClips(IReadOnlyList<GraphClip> clips)
+    {
+        List<string> missing = new();
+        if (_player == null || clips == null)
+            return missing;
+
+        foreach (GraphClip clip in clips)
+            if (!_player.HasAnimation(clip.Name) && !missing.Contains(clip.Name))
+                missing.Add(clip.Name);
+        return missing;
+    }
+
     /// Builds the state machine and starts it on the first clip.
     ///
     /// <paramref name="blend"/> and <paramref name="treadBlend"/> are the ordinary and
     /// prone-water crossfade times. Prone treaded water is a large pose change, so a transition
-    /// that touches <paramref name="treadClip"/> gets the longer one -- the same distinction the
-    /// old code made when it chose its blend time.
+    /// that touches <paramref name="treadClip"/> gets the longer one.
     public void Build(
         AnimationTree tree,
         IReadOnlyList<GraphClip> clips,
@@ -108,6 +126,14 @@ public sealed class LocomotionGraph
     {
         if (tree == null || clips == null || clips.Count == 0)
             return;
+
+        List<string> missing = MissingClips(clips);
+        if (missing.Count > 0)
+            GD.PushError(
+                $"{missing.Count} reachable clip(s) are not in the AnimationPlayer's library, so " +
+                $"those states will play nothing: {string.Join(", ", missing)}. The names in " +
+                "AnimationIds.ReachableClips and the generated library have drifted apart -- fix " +
+                "the constant, or regenerate Scenes/Stickman.tscn with tools/build_stickman.gd.");
 
         _tree = tree;
         _speedParams.Clear();
@@ -167,8 +193,7 @@ public sealed class LocomotionGraph
     ///
     /// The speed is written for the *incoming* state before the transition, so the new clip
     /// never spends a frame at the previous state's rate. Re-selecting the state that is
-    /// already playing only updates the speed, matching the old code, which did not restart a
-    /// clip that was already playing.
+    /// already playing only updates the speed, rather than restarting the clip.
     public void TravelTo(string state, float speed)
     {
         if (_playback == null)
