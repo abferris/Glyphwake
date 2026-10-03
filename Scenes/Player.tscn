@@ -1,17 +1,29 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=11 format=3]
 
-[ext_resource type="Script" path="res://Scripts/Player/PlayerController.cs" id="1_player"]
-[ext_resource type="Script" path="res://Scripts/Player/CameraController.cs" id="2_camera"]
+[ext_resource type="Script" path="res://Scripts/Player/Data/PlayerController.cs" id="1_player"]
+[ext_resource type="Script" path="res://Scripts/Player/Cameras/CameraController.cs" id="2_camera"]
 [ext_resource type="PackedScene" path="res://Scenes/Stickman.tscn" id="3_visual"]
-[ext_resource type="Script" path="res://Scripts/Player/DebugChaseCamera.cs" id="4_debug"]
-[ext_resource type="Script" path="res://Scripts/Player/SurfaceSwimPose.cs" id="5_pose"]
+[ext_resource type="Script" path="res://Scripts/Player/Cameras/DebugChaseCamera.cs" id="4_debug"]
+[ext_resource type="Script" path="res://Scripts/Player/Animation/Movement/SurfaceSwimPose.cs" id="5_pose"]
+[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/GlyphLoadout.cs" id="7_loadout"]
+[ext_resource type="Script" path="res://Scripts/Player/Data/PlayerResources.cs" id="8_resources"]
+[ext_resource type="Script" path="res://Scripts/Player/Data/PlayerTechniques.cs" id="9_techniques"]
+[ext_resource type="Resource" path="res://Resources/Glyphs/GlyphCatalog.tres" id="10_catalog"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.2
 height = 1.79
 
+; ===== COLLISION LAYERS — layer 2 PlayerBody, mask 1 World. See Scripts/Core/CollisionLayers.cs.
+;     This node is the movement capsule and is what the water zones look for, so its layer and the
+;     WaterZone's mask in World.tscn have to change together or GetOverlappingBodies() silently
+;     returns nothing and the player never enters the water. It masks World only, so the combat
+;     hitboxes that will be derived from the skeleton (layer 3) cannot block movement. =====
+
 [node name="Player" type="CharacterBody3D"]
 script = ExtResource("1_player")
+collision_layer = 2
+collision_mask = 1
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.006, 0)
@@ -27,6 +39,27 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
 
 [node name="Camera3D" type="Camera3D" parent="Head"]
 script = ExtResource("2_camera")
+
+; ===== GLYPH RUNTIME — the player-owned loadout (points live here, never on GlyphData), the
+;     resource pools a glyph's cost is paid out of, and the technique layer that turns points
+;     into capability. The nodes resolve each other by path in _Ready (PlayerRig pattern), not
+;     by exported node references.
+;
+;     Which glyphs exist lives in Resources/Glyphs/GlyphCatalog.tres, referenced once below. It
+;     used to be one ext_resource + one loadout sub_resource per glyph in this file, plus an
+;     export per technique, so the scene grew with the content and was edited every time a glyph
+;     landed. Adding a glyph is now a new .tres and one line in the catalog, and this file is not
+;     reopened. The loadout seeds itself from the catalog's DefaultSeedPoints (5) until the rune
+;     setup menu exists; points are player-owned, so tests still retune them at runtime. =====
+[node name="Loadout" type="Node" parent="."]
+script = ExtResource("7_loadout")
+Catalog = ExtResource("10_catalog")
+
+[node name="Resources" type="Node" parent="."]
+script = ExtResource("8_resources")
+
+[node name="Techniques" type="Node" parent="."]
+script = ExtResource("9_techniques")
 
 ; ===== DEBUG VIEW — a second, independent camera on ToggleKey (F3). It takes the viewport from the head camera and hands it back when toggled off. Delete this node (and this comment) and Scripts/Player/DebugChaseCamera.cs when the game no longer needs a chase view =====
 [node name="DebugChaseCamera" type="Camera3D" parent="."]

@@ -13,8 +13,13 @@ albedo_color = Color(0.45, 0.55, 0.4, 1)
 
 [node name="TestWorld" type="Node3D"]
 
+; ===== COLLISION LAYERS — layer 1 World, mask 0. Already correct by default; set explicitly
+;     because this is the fixture the headless tests stand the player on, and a test that
+;     silently stops having ground under it looks like a locomotion failure. =====
 [node name="Ground" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+collision_layer = 1
+collision_mask = 0
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
 mesh = SubResource("BoxMesh_ground")

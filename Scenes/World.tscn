@@ -107,9 +107,15 @@ mesh = SubResource("PlaneMesh_op4cu")
 material_override = SubResource("ShaderMaterial_wbelow")
 mesh = SubResource("PlaneMesh_op4cu")
 
+; ===== COLLISION LAYERS — layer 1 World, mask 2 PlayerBody. Paired with Player.tscn: the zone
+;     detects player bodies via GetOverlappingBodies(), which matches this mask against the
+;     capsule's layer. Both were the default 1 before, so they matched by accident; changing one
+;     without the other turns water entry off with no error anywhere. =====
 [node name="WaterZone" type="Area3D" parent="." unique_id=1514871703]
 transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 500, 80, 0)
 script = ExtResource("2_p70al")
+collision_layer = 1
+collision_mask = 2
 WaterSurfaceY = 80.0
 
 [node name="ZoneShape" type="CollisionShape3D" parent="WaterZone" unique_id=1393050239]

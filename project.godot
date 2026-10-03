@@ -24,6 +24,13 @@ window/stretch/aspect="expand"
 
 project/assembly_name="Glyphwake"
 
+[layer_names]
+
+3d_physics/layer_1="World"
+3d_physics/layer_2="PlayerBody"
+3d_physics/layer_3="PlayerHitbox"
+3d_physics/layer_4="Projectile"
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
