@@ -1,7 +1,15 @@
 # Glyphs & Skills — Decisions & Design Notes
 
-Status: data model implemented (`Assets/Scripts/Glyphs/`, data-only — nothing castable
-yet). Covers how Glyphs map to skills, how they classify, and how points scale them.
+Status: data model implemented (`Scripts/Glyphs/`), the player-owned loadout and the
+resource pools exist, and the first glyph is live: Double Jump (technique). Covers
+how Glyphs map to skills, how they classify, what they cost, and how points scale them.
+Updated 10-02: the loadout (`GlyphLoadout.cs`), the pools (`PlayerResources.cs`) and the
+technique layer (`PlayerTechniques.cs`) consume the data; the first `.tres` is
+`Resources/Glyphs/Techniques/DoubleJump.tres`. See "Code notes" at the end for where
+the code deliberately departs from this document.
+Updated 10-03: glyphs are listed in one catalog (`GlyphCatalog.tres`) rather than enumerated
+in `Player.tscn`, and a technique is looked up by its trigger instead of being wired per
+technique. Both are departures with engine constraints recorded under "Code notes".
 
 ## Core model
 
@@ -39,6 +47,9 @@ yet). Covers how Glyphs map to skills, how they classify, and how points scale t
         - Zephyr would start at a higher number, and more points would give a larger boost
   - Should only change numbers of said glyph, not what it does or how it works
   - While extra points will strengthen a rune, there are no breakpoints to add functionality
+  - Exception (decided 10-02): Double Jump's points buy mid-air jumps — one every 10 points.
+    Breakpoints that add capability exist where the design calls for them; this is the only
+    glyph with one so far.
 - No cap per Glyph
   - You may sink the whole 100-point pool and make a incredibly powerful attack
   - Over investment in one skill leaves you vulnerable to simple counterplay 
@@ -373,6 +384,16 @@ Examples:
 
 When points are in them, they are always on
 
+Double Jump (decided 10-02) — the first technique built:
+
+- Points ≥ 1: on. Press jump again while airborne: one mid-air jump at half the normal
+  jump's height, steering the arc slightly toward the held direction.
+- Every 10 points: +1 mid-air jump. 11 → third jump, 21 → fourth, ... 91 → eleventh; at
+  the full pool, ten mid-air jumps. Each starts at half the normal jump's height and
+  reaches twice it over its decade, then caps — further points buy new jumps, not growth.
+- More points also spend less mana (linear decrease, flooring at 0).
+- The chain resets when you land.
+
 ### Modifier math & stacking
 
 When several modifiers touch the same stat, resolve in three stages: flat → percent →
@@ -382,8 +403,8 @@ multiply.
 - Percent — all percents add together, then apply as one (two +10% = +20%).
 - Multiply — applied last, multiplicatively (x2, x1.5).
 
-This is predictable and easy to balance. (`PassiveModifier` currently has `Add`/`Multiply`
-only and will need a percent operation.)
+This is predictable and easy to balance. (`ModifierOperation` has `Add`/`Percent`/`Multiply`;
+resolving three modifiers in that order is the consumer's job, not built yet.)
 
 
 ### Unresolved passives (unresolved)
@@ -392,14 +413,124 @@ only and will need a percent operation.)
 - money
 - loot drop
 
+## Code notes
+
+Where the code deliberately differs from this document, and why.
+
+- **`GlyphSchool` / `GlyphElement` are enums, not tags.** The `Tags` list is still there for
+  classification neither set covers, but anything another glyph filters on has to be a closed
+  set — resistance tables, combo rules and passive filters all need to enumerate it. Tags are
+  free-form and matched by a stable `GlyphTag.Id` rather than resource identity, because the
+  old `Array.Contains` compared the resource instance and a tag authored in the editor would
+  not have matched one built in code.
+- **The old `GlyphCategory` enum is gone.** Its five values (Capability / Movement / Utility /
+  Attack / Summoning) predated this document and overlapped School. Three classification axes
+  was one more place for them to disagree.
+- **`StatKey` is split by owner**, into the glyph's own numbers (Damage, Radius, Range, …) and
+  the caster's (MaxHealth, ManaRecovery, …). Keeping one enum for both is what allowed mana
+  cost to exist twice: as a float on `ActiveGlyphData` and as a `StatKey`, each with its own
+  scaling path.
+- **Cost is a list of `GlyphCost`, not a float.** Per the Resources section above, a cast can
+  pay mana up front *and* stamina per second while it channels, and some glyphs spend health.
+  `CostResource` is Mana / Health / Stamina; `PerSecond` is what makes a channel able to
+  drain, which the old single `ManaCost` float could not express.
+- **Passive targets are three typed lists**, not one list with a kind field. `SelfStatModifier`
+  (your own stat), `GlyphModifier` (other glyphs, filtered by school/element/tag) and
+  `PassiveTrigger` (an event that spawns a payload) are different shapes; one list would let
+  every entry carry fields that cannot apply to it.
+- **Techniques are a third subclass, not a flag on actives.** `TechniqueGlyphData` has a
+  `TechniqueTrigger` instead of a hotbar slot and an aim direction, because a technique rides
+  an existing input and adds a capability — that is what separates it from an active on one
+  side and a passive on the other. When points are in it, it is on.
+- **Behaviour is a `PackedScene` payload**, on both `ActiveGlyphData` and `PassiveTrigger`. The
+  data describes *what a glyph is and how strong*; the payload node is what actually happens in
+  the world. Keeping that out of the resource is what lets effects be ordinary Godot scenes
+  the artist tunes in the editor.
+- **Scaling is base stats plus per-glyph scaling entries, not a shared formula.** Every glyph
+  holds `StatValue[]` base statistics and a `GlyphScaling[]` array; a scaling entry points at a
+  `StatKey`, names a `GlyphScalingStyle` (Linear / Quadratic / SquareRoot / Step) and carries a
+  value. The old `PerPoint` fields (`ScaledStat`, `CastTimePerPoint`, `CooldownPerPoint`,
+  `DurationPerPoint`, trigger `DurationPerPoint`) were linear-only and hardcoded, so one glyph
+  could not scale differently from another. CastTime, Cooldown, Duration and Range are now base
+  stats like any other number — absence of an entry is how "zero for that mode" is expressed
+  (an Impulse has no CastTime, a Self target has no Range). The lookup is shared
+  (`GlyphStats.StatAt` / `TryStatAt`); `TryStatAt` exists because 0 is a legitimate value and
+  only the boolean can tell "no entry" from "explicit 0". `PassiveTrigger` carries its own
+  base stats + scalings (one passive can fire several payloads with different needs) through
+  the same helper.
+- **Cost and passive-modifier growth are still linear-only.** `GlyphCost`'s
+  `AmountPerPoint`/`PerSecondPerPoint` and the modifiers' `PerPoint` predate the scaling styles
+  and have not been migrated; per the Activation & point scaling section above, "different
+  glyphs scale differently" currently holds only for glyph stats.
+
+## Code notes (10-02 additions)
+
+- **The double jump's growth is a breakpoint curve, expressed in two pieces.** The jump
+  COUNT is the glyph's own `JumpCount` stat: base 1 with a `Step` scaling, Value 1 per
+  `StepSize` 10 points — `StatAt(JumpCount)` reads exactly the number of mid-air jumps the
+  points buy. The per-jump HEIGHT depends on which jump you are on as well as the point
+  count, so it cannot be a pure scaling entry: it lives in the consumer
+  (`PlayerTechniques.AirJumpHeightAt`), relative to the body's normal jump height. This
+  departs from "no breakpoints to add functionality" above — the design now adds jumps at
+  breakpoints (decided 10-02), and the linear ramp inside each decade is a judgement call
+  the document does not settle.
+- **Node references resolve by path in `_Ready`** (the `PlayerRig` pattern), not by exported
+  node references. A C# `[Export]` node reference serialized into a hand-written `.tscn`
+  (`X = NodePath("...")`) did not resolve under 4.7: the property stayed null with no error
+  and no warning, and only a probe found it. Resource exports (`X = ExtResource(...)`)
+  resolve fine — the trap is node-typed exports only.
+
+## Code notes (10-03 additions)
+
+- **Which glyphs exist lives in `GlyphCatalog`, not in the scene.** `Player.tscn` used to carry
+  an `ext_resource` per glyph, a `GlyphLoadoutEntry` sub_resource per glyph and a
+  `Technique = ExtResource(...)` export per technique — a scene whose length tracked the content
+  and that had to be reopened every time a glyph landed. It now references
+  `Resources/Glyphs/GlyphCatalog.tres` once, so adding a glyph is a new `.tres` plus one line in
+  the catalog. The grouping is three typed lists (`Techniques` / `Actives` / `Passives`) for the
+  reason given above for passive targets, and the master catalog that a separate per-type file
+  would have needed is not built yet: nothing consumes "every glyph" until the rune setup menu
+  does.
+- **Godot does not preserve the element type of an exported C# array.** `[Export]
+  Array<SomeCSharpClass>` reaches Godot as `Array[Resource]`: `get_typed_class_name()` reports
+  `Resource`, the `.tres` saves with no type marker, and a type written into the file by hand
+  (`Array[TechniqueGlyphData]([...])`) is discarded on load. Pushing from GDScript is refused by
+  Godot's own typed-array check — but it refuses *everything*, including a correctly-typed glyph,
+  and `Actives` refused even its own type while `Techniques` and `Passives` accepted theirs. So
+  the typed arrays are worth keeping for C#-side compile-time and cast safety and for making the
+  grouping legible, but they do **not** give an editor-side type filter. `GlyphCatalog.Validate`
+  is the substitute: it reports any glyph that is not in the list its own subclass belongs to, and
+  `GlyphLoadout` refuses to seed off a catalog that fails it. Pinned by
+  `tools/test_glyph_catalog.gd`, which will report the day a Godot upgrade changes it.
+- **`GlyphCatalog.tres` is generated, not hand-written**, by `tools/build_catalog.gd` through
+  `ResourceSaver`. A hand-written catalog would be guessing the serialized form of the typed
+  arrays, which is the exact failure mode the previous bullet describes. Re-run that script after
+  adding a glyph.
+- **A technique is resolved by `TechniqueTrigger`, not by a per-technique export.** The trigger
+  is already the thing that distinguishes one technique from another — a technique rides an
+  existing input — so `PlayerTechniques` asks the catalog for "the Airborne technique" and the
+  catalog decides which `.tres` answers. Wall jump, air dash, waterbreathing and spiderclimb each
+  ride a different trigger, so each is a catalog entry and no change in code or scene. The
+  property stays settable because `tools/test_glyph_loadout.gd` hands it a glyph directly instead
+  of standing up a catalog.
+- **The loadout seeds itself; the scene no longer authors an allocation.** `Entries` is
+  player-owned runtime state and was serialized into `Player.tscn` as a 5-point sub_resource.
+  `GlyphLoadout._Ready` now seeds any catalog glyph with no entry from `DefaultSeedPoints` (5),
+  leaving an existing entry alone so a restored save — or a deliberate zero — survives. One value
+  for every glyph is a simplification, not a design: nothing needs per-glyph starting points yet,
+  and the rune setup menu replaces this along with save-loaded allocations.
+
 ## Not built yet (next layers)
 
-- Just about everything
-- Casting/execution of skills (needs the AimSource → AimTarget pipeline)
-- Status effects on glyphs (slow, burning, dazed, ...)
-- Techniques (mana-driven passive abilities: double jump, wall jump, waterbreathing,
-  spiderclimb)
-- Mana pool, regen, and the mana-refill Channel glyph
-- Point allocation + the 100-point pool
+- Casting/execution of active glyphs (needs the AimSource → AimTarget pipeline, and a spawner
+  for `Payload`)
+- Status effects on glyphs (slow, burning, dazed, ...) — `PassiveTrigger` has the event, but
+  no status concept to fire
+- Resolving modifiers flat → percent → multiply, and aggregating them across a loadout
+- Boosted recovery (safe zones, resting, regen passives) — the pools and the floor regen exist
+- Point-allocation UI (the rune setup menu) — `GlyphLoadout` has the allocation model and the
+  inspector is the debug allocator
+- Remaining techniques wired to locomotion (wall jump, air dash, waterbreathing, spiderclimb)
+- Input map, aim raycast, cast preview (see `ControlsDecisions.md`)
 - Unlocks via missions, reset in safe zones, hotbar binding (see `ControlsDecisions.md`)
 - Remap anywhere vs safe-zone-only (above).

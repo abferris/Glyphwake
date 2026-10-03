@@ -1,0 +1,46 @@
+[gd_resource type="Resource" script_class="TechniqueGlyphData" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Glyphs/Technique/TechniqueGlyphData.cs" id="1_technique"]
+[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/GlyphCost.cs" id="2_cost"]
+[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/StatValue.cs" id="3_statvalue"]
+[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/GlyphScaling.cs" id="4_scaling"]
+
+; ===== DOUBLE JUMP — the first authored glyph. School Flowing (movement), elements Zephyr +
+;     Anima (wind + body, non-damaging) per GlyphDecisions.md "Element principles (decided)".
+;     JumpCount is base 1 with Step scaling, Value 1 per StepSize 10 points: the glyph's own
+;     JumpCount stat reads exactly the number of mid-air jumps the points buy (1 at activation,
+;     +1 every 10 points, 10 at the full pool). The per-jump height curve is the consumer's
+;     (PlayerTechniques.AirJumpHeightAt), relative to the body's normal jump. Mana 10 up front,
+;     -0.5 per point past activation, flooring at 0 (GlyphCost.AmountAt). =====
+
+[sub_resource type="Resource" id="GlyphCost_mana"]
+script = ExtResource("2_cost")
+Resource = 0
+Amount = 10.0
+AmountPerPoint = -0.5
+PerSecond = 0.0
+PerSecondPerPoint = 0.0
+
+[sub_resource type="Resource" id="StatValue_jumpcount"]
+script = ExtResource("3_statvalue")
+Key = 9
+Value = 1.0
+
+[sub_resource type="Resource" id="GlyphScaling_jumpcount"]
+script = ExtResource("4_scaling")
+Stat = 9
+Style = 3
+Value = 1.0
+StepSize = 10.0
+
+[resource]
+script = ExtResource("1_technique")
+DisplayName = "Double Jump"
+Description = "Press jump again while airborne to jump a second time, steering your arc slightly toward the held direction. Points buy more mid-air jumps -- one every 10 points, each starting at half a normal jump's height and reaching twice it over its decade -- and spend less mana. The chain resets when you land."
+Trigger = 0
+Costs = Array[Object]([SubResource("GlyphCost_mana")])
+Held = false
+BaseStats = Array[Object]([SubResource("StatValue_jumpcount")])
+Scalings = Array[Object]([SubResource("GlyphScaling_jumpcount")])
+Elements = Array[int]([4, 5])
+Tags = Array[Object]([])
