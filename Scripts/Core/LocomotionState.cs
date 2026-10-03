@@ -35,10 +35,8 @@ public readonly struct SubmersionProbe
 
     /// Vertical velocity of the body, in world Y, negative when falling. Depth alone cannot tell
     /// a plunge from a swim: a body dropping in from height crosses the treading depth in a
-    /// couple of ticks while still doing 15 m/s, so it would already be submerged and still
-    /// falling at the same moment. Speed is what separates "falling into the water" from "in the
-    /// water", and it is the body that integrates it, so it comes in with the rest of the
-    /// frame's measurements.
+    /// couple of ticks while still doing 15 m/s. Speed is what separates "falling into the water"
+    /// from "in the water".
     public readonly float VerticalVelocity;
 
     public SubmersionProbe(
@@ -64,13 +62,10 @@ public readonly struct SubmersionProbe
 
 /// The single owner of the character's water state.
 ///
-/// This used to be five flags -- IsSwimming, IsUnderwater, IsWading, AtSwimDepth and
-/// WadeSubmersion -- set in one place and then recombined by hand at six separate call sites
-/// across three files. Two of those six were the same predicate written twice, and one was a
-/// third spelling of it, which is the kind of drift that produces a camera that fights the
-/// body it is attached to. The raw latches still exist here, because they are genuinely
-/// independent measurements with hysteresis, but the *answers* to "is this character
-/// swimming" are now asked of <see cref="Mode"/>, and there is exactly one of it.
+/// The raw latches below are genuinely independent measurements, several with their own
+/// hysteresis, so they stay. The *answers* are not recombined by hand at the call sites: "is this
+/// character swimming" is asked of <see cref="Mode"/>, and there is exactly one of each answer
+/// here rather than a spelling per caller.
 public sealed class LocomotionState
 {
     // --- Tuning. Mirrored from the owning controller's exports so the scene keeps a single
@@ -85,18 +80,15 @@ public sealed class LocomotionState
     public float SurfaceHysteresis = 0.1f;
 
     /// Fraction of the feet-to-head span that has to be under before the water takes over.
-    /// This is the one knob for "submerged to the neck": it starts the float that slows the
-    /// fall and the swim clip together, so the buoyancy and the animation can never disagree
-    /// about when the character counts as being in the water.
+    /// Starts the float that slows the fall and the swim clip together, so buoyancy and animation
+    /// can never disagree about when the character counts as being in the water.
     public float FloatEngageDepth = 0.7f;
 
     /// Fraction of the feet-to-head span at which a body standing on the floor hands over from
-    /// the walk clips to the swim clips. Deeper than <see cref="FloatEngageDepth"/> on purpose:
-    /// a body in the air is falling, and being mostly under is enough for the float to arrest
-    /// it, but a body on the bottom is not going anywhere and still has its footing, so the
-    /// water has to be over its shoulders before the ground look gives way. 0.92 is measured
-    /// rather than picked: the shoulder bone sits 0.114 m below the head on this rig, and the
-    /// head is the whole span above the feet, so the shoulders go under at 0.921 of it.
+    /// the walk clips to the swim clips. Deeper than <see cref="FloatEngageDepth"/> on purpose: a
+    /// body on the bottom is not going anywhere and still has its footing, so the water has to be
+    /// over its shoulders first. 0.92 is measured, not picked -- the shoulder bone sits 0.114 m
+    /// below the head, and the head is the whole span above the feet.
     public float WadeHandoverDepth = 0.92f;
 
     /// Water depth, in metres, below which a body over water is wading rather than swimming.
@@ -105,11 +97,10 @@ public sealed class LocomotionState
     public float WadeDepth = 2f;
 
     /// Downward speed, in m/s, above which a body in water is still falling rather than
-    /// swimming, however deep it is. This is what separates a plunge from a dive: submersion
-    /// alone fires the swimming look while a body dropping in from height is still doing well
-    /// over 10 m/s, because the fall covers the last half-metre of depth in two or three ticks.
-    /// It has to sit above <see cref="MaxSwimVerticalSpeed"/>-class speeds, or a body deliberately
-    /// diving down would read as a plunge and be denied its own swimming look.
+    /// swimming. Submersion alone fires the swimming look while a body dropping in from height is
+    /// still doing well over 10 m/s, because the fall covers the last half-metre of depth in two
+    /// or three ticks. Must sit above <see cref="MaxSwimVerticalSpeed"/>-class speeds, or a body
+    /// deliberately diving down would read as a plunge and be denied its own swimming look.
     public float PlungeSpeed = 6f;
 
     // --- Raw latched state. These are measurements, not answers.
@@ -173,13 +164,12 @@ public sealed class LocomotionState
             or LocomotionMode.UnderwaterSwimming;
 
     /// In a water volume, not wading, and not submerged past the eye: either treading at the
-    /// surface or still falling in. The camera's eye lift wants exactly this, which is why it
-    /// used to be spelled out separately.
+    /// surface or still falling in. The camera's eye lift wants exactly this.
     ///
-    /// The swim pose modifier does not use this, despite the name reading as if it should. It
-    /// used to, and because the water zone reaches 25 m above the waterline that meant it ran for
-    /// the whole of the plunge through open air. It waits on <see cref="IsSurfaceSwimming"/>
-    /// instead, so the water only starts authoring the pose once the body is floating in it.
+    /// The swim pose modifier does not use this, despite the name reading as if it should. The
+    /// water zone reaches 25 m above the waterline, so this stays true for the whole of a plunge
+    /// through open air; the pose waits on <see cref="IsSurfaceSwimming"/> instead, so the water
+    /// only starts authoring the pose once the body is floating in it.
     public bool IsAtOrAboveSurface =>
         Mode is LocomotionMode.EnteringWater or LocomotionMode.SurfaceSwimming;
 
@@ -214,15 +204,13 @@ public sealed class LocomotionState
         WadeSubmersion = 0f;
     }
 
-    /// Recomputes every latch and then <see cref="Mode"/>. The order matters: submersion is
-    /// measured before it is latched, and wading is resolved last because it is the only one of
-    /// the three that also depends on the ground.
+    /// Recomputes every latch and then <see cref="Mode"/>. Order matters: submersion is measured
+    /// before it is latched, and wading is resolved last because it also depends on the ground.
     ///
     /// <paramref name="groundY"/> is the height of the floor beneath the body, or negative
-    /// infinity when there is none. It is only read when the body is in water, which is why the
-    /// caller can skip the raycast entirely when it is not -- that raycast is the single most
-    /// expensive thing this class could otherwise ask for, and a character on dry land has no
-    /// use for it.
+    /// infinity when there is none. It is only read while the body is in water, so the caller can
+    /// skip the raycast entirely when it is not -- that raycast is the single most expensive thing
+    /// this class could otherwise ask for, and a character on dry land has no use for it.
     public void Update(in SubmersionProbe probe, float groundY)
     {
         if (!InWater)
@@ -246,50 +234,52 @@ public sealed class LocomotionState
 
         WadeSubmersion = Mathf.Clamp((probe.WaterSurfaceY - probe.FootY) / span, 0f, 1f);
 
-        // A plunge latches on the way in and only lets go once the body has slowed to half
-        // PlungeSpeed, so the spring's overshoot around its equilibrium cannot re-arm it. The
-        // latch is what the swimming look waits on, and it is deliberately independent of depth:
-        // depth alone fires the moment the body is submerged, which a fall from height reaches
-        // while still doing well over 10 m/s, and the swimming look then replaces the fall pose
-        // on a body that has not stopped moving yet.
-        IsPlunging = IsPlunging
-            ? probe.VerticalVelocity < -PlungeSpeed * 0.5f
-            : probe.VerticalVelocity < -PlungeSpeed;
+        // How much water, if any, stands on the ground beneath the body. Positive means there is water
+        // down there to fall into; zero or negative means the ground the body will land on is above
+        // the waterline. Not the same question as InWater, which only asks whether the body is
+        // inside the zone box -- and that box covers the whole map, including 40 m of open air.
+        float waterDepth = probe.WaterSurfaceY - groundY;
+        bool overWater = waterDepth > 0f;
 
-        // Latches on at FloatEngageDepth -- or at WadeHandoverDepth for a body standing on the
-        // bottom, which has to be under further before the water takes its look -- and backs off
-        // by the same hysteresis IsUnderwater uses, in span fractions rather than metres, so a
-        // body sitting exactly on the threshold settles instead of chattering between two large
-        // pose changes. Which of the two applies is re-read every frame rather than latched
-        // alongside it, so touching down and standing back up cannot strand the body on the
-        // wrong side of its own dead zone.
+        // Latches on at PlungeSpeed and only releases at half it, so the float spring's overshoot around
+        // its equilibrium cannot re-arm a fall that has already ended. Deliberately independent of
+        // depth, which alone fires the moment the body is submerged. Also gated on overWater:
+        // being inside the zone is not being above water, and a fall off a cliff on dry land would
+        // otherwise latch a plunge with 85 m of rock underneath and swim the whole descent.
+        IsPlunging = overWater && (IsPlunging
+            ? probe.VerticalVelocity < -PlungeSpeed * 0.5f
+            : probe.VerticalVelocity < -PlungeSpeed);
+
+        // Latches on at FloatEngageDepth -- or WadeHandoverDepth for a body standing on the bottom --
+        // and backs off by the same hysteresis IsUnderwater uses, in span fractions rather than
+        // metres, so a body sitting exactly on the threshold settles instead of chattering between
+        // two large pose changes. Which of the two applies is re-read every frame rather than
+        // latched, so touching down cannot strand the body on the wrong side of its dead zone.
         float engage = probe.OnFloor ? WadeHandoverDepth : FloatEngageDepth;
         float swimRelease = Mathf.Max(0f, engage - SurfaceHysteresis / span);
         AtSwimDepth = AtSwimDepth
             ? WadeSubmersion > swimRelease
             : WadeSubmersion >= engage;
 
-        bool shallow = probe.WaterSurfaceY - groundY < WadeDepth;
+        // Shallow means there is water over this floor and it is less than WadeDepth deep, so the
+        // test has to be two-sided: ground standing above the waterline makes the difference
+        // negative, and negative is trivially less than WadeDepth, so every cliff on the island
+        // would count as shallow floor and cap a falling body at SwimSpeed mid-air.
+        // waterDepth and overWater come from further up, where the plunge latch needs them.
+        bool shallow = overWater && waterDepth < WadeDepth;
         IsWading = !IsUnderwater && (probe.OnFloor || shallow);
         _overShallowFloor = shallow;
         GroundY = groundY;
 
-        // The eye wins outright, then submersion, then the ground, and the three are mutually
-        // exclusive by construction, which is the whole point: there is no fourth combination
-        // to remember. Wading used to be resolved first, which meant a body standing in
-        // chest-deep water kept the ground clips until the eye itself went under -- the walk
-        // outlived the water by the whole depth of the head, and the same ordering made a body
-        // climbing back out tread until the eye crossed the surface on the way up. Wading is a
-        // statement about what is holding the body up, so it belongs last: it only gets a say
-        // once the water is demonstrably not over the shoulders.
-        // The plunge is resolved first, ahead of everything below it, because it is the only one
-        // of the four that is a statement about speed rather than about depth or ground. A body
-        // that is still arriving fast is falling, whatever it happens to be submerged to, so it
-        // keeps the fall clip and the upright body until the water has actually caught it. That
-        // is what stops a jump into the water from swapping to the swimming pose on the way in:
-        // the old ordering asked only how deep the body was, and depth runs out long before speed
-        // does. Everything else is mutually exclusive by construction, which is the rest of the
-        // point: there is no fourth combination to remember.
+        // Plunge first: it is the only one of these that is a statement about speed rather than depth
+        // or ground, and a body still arriving fast keeps the fall clip and the upright body
+        // however deep it happens to be. Then the eye, then submersion, then the ground --
+        // mutually exclusive by construction, so there is no fourth combination to remember. Wading
+        // goes last because it is a statement about what is holding the body up, so it only gets
+        // a say once the water is demonstrably not over the shoulders.
+        // Airborne is the only thing falling through open air can be. The zone covers the whole
+        // map, so anything in it that is not yet underwater, at swim depth, wading or plunging
+        // would otherwise route to EnteringWater and take its swim speed cap mid-air.
         Mode = IsPlunging
             ? LocomotionMode.EnteringWater
             : IsUnderwater
@@ -298,6 +288,8 @@ public sealed class LocomotionState
                     ? LocomotionMode.SurfaceSwimming
                     : IsWading
                         ? LocomotionMode.Wading
-                        : LocomotionMode.EnteringWater;
+                        : probe.OnFloor
+                            ? LocomotionMode.Grounded
+                            : LocomotionMode.Airborne;
     }
 }
