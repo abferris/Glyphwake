@@ -11,6 +11,17 @@ public abstract partial class GlyphData : Resource
 
     [Export] public GlyphSchool School;
 
+    /// The animation this glyph plays on its caster when it fires, if it has one.
+    ///
+    /// On the base rather than on ActiveGlyphData because a technique needs one too -- an air dash
+    /// and a wall jump both want a clip -- and a passive whose trigger fires on a swing wants one
+    /// on the trigger. Nothing reads this yet: casting is not implemented, so this is the
+    /// attachment point rather than a working feature. See GlyphDecisions.md, "Not built yet".
+    ///
+    /// Null is the common case and is correct: the game is first person, so a glyph the player
+    /// never sees themselves perform needs no cast animation.
+    [Export] public GlyphCastAnimation CastAnimation;
+
     /// The glyph's own numbers before scaling. Which keys appear here is deliberate: an
     /// Impulse cast has no CastTime entry and a Self target has no Range entry, and absence
     /// is how "zero for that mode" is expressed.

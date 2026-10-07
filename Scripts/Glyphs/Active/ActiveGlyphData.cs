@@ -24,6 +24,17 @@ public partial class ActiveGlyphData : GlyphData
     /// instantiates it; the payload's own script decides what it does once it exists.
     [Export] public PackedScene Payload;
 
+    /// What the glyph's payload produces where it lands: the burst, the scorch, the splinters.
+    ///
+    /// A second slot rather than something authored inside <see cref="Payload"/> because that
+    /// scene is instantiated once at the caster and travels, while this one is instantiated where
+    /// the payload resolves, which is somewhere else entirely. It is also what lets one impact be
+    /// shared by every glyph that uses it, rather than every projectile scene carrying its own copy.
+    ///
+    /// Null is correct and common: a glyph whose damage is the whole point and whose arrival needs
+    /// no dressing resolves with no separate effect.
+    [Export] public PackedScene ImpactPayload;
+
     public float CostUpFrontAt(CostResource resource, int points)
     {
         float total = 0f;

@@ -30,6 +30,12 @@ public sealed class PlayerAnimator
     public float MinJumpScale = 0.5f;
     public float MaxJumpScale = 1.5f;
 
+    /// The gait phase a jump at or past counts as jumping off the right foot. Measured off the
+    /// walk cycle rather than guessed: the left foot is forward for roughly the first half of
+    /// the stride (0.03-0.52 of the walk cycle, 0-0.45 of the run), so a single boundary sits
+    /// within a hair of both. Tunable by eye; the boundary is the only thing to move.
+    public float GaitLeadPhase = 0.5f;
+
     /// The state the character is playing, as a clip name. The AnimationTree reports the same
     /// strings, so this is what the GDScript tests assert against.
     public string CurrentState => _graph.CurrentState;
@@ -39,12 +45,41 @@ public sealed class PlayerAnimator
     /// is always 1 once a tree is driving the player.
     public float PlaybackSpeed { get; private set; } = 1f;
 
+    /// Where the current state has played to, as a fraction of its length, wrapped into 0..1.
+    /// This is the gait phase: read back from the tree rather than accumulated by hand, so the
+    /// phase and the visible stride cannot disagree. Meaningless while a non-gait clip plays,
+    /// which is why <see cref="LeadFootLeft"/> only reads it when a stride is on the floor.
+    public float GaitPhase
+    {
+        get
+        {
+            float len = _graph.PlayLength;
+            if (len < 0.01f)
+                return 0f;
+            return Mathf.Wrap(_graph.PlayPosition, 0f, len) / len;
+        }
+    }
+
+    /// Which foot leads the stride on the floor, from <see cref="GaitPhase"/>. The gait is what
+    /// decides -- a jump off the leading foot should continue the stride the walk cycle is
+    /// actually in. Outside a gait (idle, swim, airborne) there is no stride to read, so this
+    /// reports the left foot, which is also what a first step with no gait behind it uses.
+    /// A gait played backwards runs its cycle backwards, so the boundary flips with it.
+    public bool LeadFootLeft()
+    {
+        if (!_gaitPlaying)
+            return true;
+        return _gaitReversed ? GaitPhase >= GaitLeadPhase : GaitPhase < GaitLeadPhase;
+    }
+
     private readonly LocomotionGraph _graph;
     private readonly float _jumpClipLength;
 
     private float _swimStrokeSpeed = 1f;
     private float _jumpScale = 1f;
     private MoveDirection _lastDirection = MoveDirection.None;
+    private bool _gaitPlaying;
+    private bool _gaitReversed;
 
     public PlayerAnimator(LocomotionGraph graph)
     {
@@ -76,13 +111,26 @@ public sealed class PlayerAnimator
         /// actually on.
         public readonly float VerticalVelocity;
 
+        /// The direction the current jump was fired in, latched by the caller on the jump and
+        /// cleared on any grounded frame. It no longer picks the clip -- every jump plays the
+        /// forward family -- but None still means the airborne pose is not a jump look: a fall
+        /// off a ledge keeps the bare clip. This is fed in every frame rather than read by this
+        /// class, so the latch stays with the caller that owns it.
+        public readonly MoveDirection JumpDirection;
+
+        /// Which foot the latched jump leads with. Only read when
+        /// <see cref="JumpDirection"/> is set, which is also the only way it gets latched.
+        public readonly bool JumpLeadsLeft;
+
         public Frame(
             LocomotionMode mode,
             float speed,
             float horizontalSpeed,
             Vector2 input,
             bool onFloor,
-            float verticalVelocity)
+            float verticalVelocity,
+            MoveDirection jumpDirection = MoveDirection.None,
+            bool jumpLeadsLeft = true)
         {
             Mode = mode;
             Speed = speed;
@@ -90,13 +138,16 @@ public sealed class PlayerAnimator
             Input = input;
             OnFloor = onFloor;
             VerticalVelocity = verticalVelocity;
+            JumpDirection = jumpDirection;
+            JumpLeadsLeft = jumpLeadsLeft;
         }
     }
 
     /// Scales the jump clip so one authored jump covers whatever arc the current jump
     /// produces. A fixed-length clip on a variable-height jump either lands early or loops
-    /// visibly before touchdown.
-    private float PredictAirTime(in Frame frame, float bodyY, float groundY, float restHeight, float gravity)
+    /// visibly before touchdown. Public rather than private because the air-step cast scales
+    /// its clip to the same arc for exactly the same reason.
+    public float PredictAirTime(in Frame frame, float bodyY, float groundY, float restHeight, float gravity)
     {
         if (float.IsNegativeInfinity(groundY))
             return 1f;
@@ -129,6 +180,7 @@ public sealed class PlayerAnimator
 
         if (swimming)
         {
+            _gaitPlaying = false;
             bool treading = mode == LocomotionMode.SurfaceSwimming
                 && frame.HorizontalSpeed < TreadSpeedThreshold;
             if (treading)
@@ -148,20 +200,43 @@ public sealed class PlayerAnimator
         }
         else if (!frame.OnFloor)
         {
-            state = AnimationIds.Jump;
-            if (state != _graph.CurrentState)
+            // The jump look is the forward clip for every direction: the direction the jump was
+            // fired in is shown as a tilt of the body instead (the caller's jump tilt), because
+            // the directional clips read as marching rather than as a jump. The lead foot is
+            // still the one latched by the caller on the jump, so the clip agrees with the
+            // stride that launched it, and a fall off a ledge -- no jump, no latch -- keeps the
+            // bare clip through the descent.
+            if (frame.JumpDirection != MoveDirection.None)
             {
-                float airTime = PredictAirTime(frame, bodyY, groundHeightUnder(), restHeight, gravity);
-                _jumpScale = _jumpClipLength > 0.01f && airTime > 0.05f
-                    ? Mathf.Clamp(_jumpClipLength / airTime, MinJumpScale, MaxJumpScale)
-                    : 1f;
+                state = AnimationIds.JumpClipFor(frame.JumpLeadsLeft);
+                if (state != _graph.CurrentState)
+                {
+                    float clipLength = (float)_graph.ClipLength(state);
+                    float airTime = PredictAirTime(frame, bodyY, groundHeightUnder(), restHeight, gravity);
+                    _jumpScale = clipLength > 0.01f && airTime > 0.05f
+                        ? Mathf.Clamp(clipLength / airTime, MinJumpScale, MaxJumpScale)
+                        : 1f;
+                }
+                scale = _jumpScale;
             }
-            scale = _jumpScale;
+            else
+            {
+                state = AnimationIds.Jump;
+                if (state != _graph.CurrentState)
+                {
+                    float airTime = PredictAirTime(frame, bodyY, groundHeightUnder(), restHeight, gravity);
+                    _jumpScale = _jumpClipLength > 0.01f && airTime > 0.05f
+                        ? Mathf.Clamp(_jumpClipLength / airTime, MinJumpScale, MaxJumpScale)
+                        : 1f;
+                }
+                scale = _jumpScale;
+            }
         }
         else if (frame.Speed < IdleSpeed)
         {
             state = AnimationIds.Idle;
             _lastDirection = MoveDirection.None;
+            _gaitPlaying = false;
         }
         else
         {
@@ -192,6 +267,12 @@ public sealed class PlayerAnimator
             // with the rest of the clip choice.
             if (reversed)
                 scale = -scale;
+
+            // A gait is on the floor, so the gait phase is live and -- when the cycle runs
+            // backwards -- mirrored. Recorded here rather than re-derived by the lead-foot
+            // read, so the two cannot disagree about what the stride is doing.
+            _gaitPlaying = true;
+            _gaitReversed = reversed;
         }
 
         PlaybackSpeed = scale;

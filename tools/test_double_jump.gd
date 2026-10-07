@@ -313,9 +313,11 @@ func _physics_process(_delta: float) -> bool:
 		if t == 2:
 			var hv_post := Vector2(player.velocity.x, player.velocity.z)
 			var turned := angle_between(hv_pre, hv_post)
-			# Redirect 0.5 of the way through a right angle is a 45 degree swing.
-			if absf(turned - 45.0) > 6.0:
-				fail("the air jump turned the arc %f degrees, expected 45" % turned)
+			# The swing is AirJumpRedirect of the way through a right angle, read off the
+			# body rather than hardcoded, so a retune cannot stale the expectation.
+			var expected: float = 90.0 * player.AirJumpRedirect
+			if absf(turned - expected) > 6.0:
+				fail("the air jump turned the arc %f degrees, expected %f" % [turned, expected])
 			if absf(hv_post.length() - hv_pre.length()) > 0.25:
 				fail("the redirect changed the speed from %f to %f" % [hv_pre.length(), hv_post.length()])
 			if player.velocity.y < air_vy(1) - SPIKE_GUARD:

@@ -26,21 +26,21 @@ public readonly struct GraphClip
 /// The character's AnimationTree.
 ///
 /// This is a flat state machine with one state per reachable clip, and every state able to
-    /// reach every other. That looks wasteful next to a hand-authored graph, and it is: 16 states
-    /// means 240 transitions. It is also exactly what <c>AnimationPlayer.Play(anyClip, blend)</c>
+/// reach every other. That looks wasteful next to a hand-authored graph, and it is: 18 states
+/// means 306 transitions. It is also exactly what <c>AnimationPlayer.Play(anyClip, blend)</c>
 /// gave -- any clip to any other -- and generating it from a uniform rule keeps that behaviour
-    /// identical while making the graph replaceable: the next step is to collapse the sixteen
-    /// ground states into two blend spaces, which deletes most of these transitions rather than
-    /// maintaining them.
+/// identical while making the graph replaceable: the next step is to collapse the sixteen
+/// ground states into two blend spaces, which deletes most of these transitions rather than
+/// maintaining them.
 ///
 /// Every state is the same three-node shape -- clip, then a time scale, then out -- for one
-    /// reason: a state machine cannot vary playback speed per state on its own, and the
-    /// AnimationPlayer's own SpeedScale is ignored once a tree is driving it. The time scale node
-    /// is what makes the jump-clip scaling and the backwards walk reversal survive the move.
+/// reason: a state machine cannot vary playback speed per state on its own, and the
+/// AnimationPlayer's own SpeedScale is ignored once a tree is driving it. The time scale node
+/// is what makes the jump-clip scaling and the backwards walk reversal survive the move.
 ///
 /// None of this is editable in the AnimationTree dock. That is the trade for generating it: at
-    /// 240 transitions a hand-authored resource is unreviewable, and the graph that replaces this
-    /// one is a small number of blend spaces rather than a large number of transitions.
+/// 306 transitions a hand-authored resource is unreviewable, and the graph that replaces this
+/// one is a small number of blend spaces rather than a large number of transitions.
 public sealed class LocomotionGraph
 {
     /// The state machine's implicit entry node.
@@ -52,6 +52,20 @@ public sealed class LocomotionGraph
     /// Key of the clip node inside every state.
     public const string ClipNode = "clip";
 
+    /// Key the state machine sits under when a cast layer wraps it. The tree root becomes a
+    /// blend tree holding the machine and the cast's one-shot, so every parameter the machine
+    /// owns moves down a level -- which is why the wrap is built here, where the parameter
+    /// paths are, rather than reached in afterwards by whoever plays the cast.
+    public const string LocomotionNode = "Locomotion";
+
+    /// Key of the cast's one-shot node, and of the clip and time-scale nodes feeding it.
+    /// The one-shot is what plays a cast animation over the locomotion: it runs the clip once,
+    /// fades in and out, and hands back -- and its filters decide which tracks the cast
+    /// overrides, so locomotion keeps playing underneath on every other bone.
+    public const string CastNode = "Cast";
+    public const string CastClipNode = "CastClip";
+    public const string CastSpeedNode = "CastSpeed";
+
     private AnimationTree _tree;
     private AnimationNodeStateMachinePlayback _playback;
     private readonly Dictionary<string, string> _speedParams = new();
@@ -61,6 +75,13 @@ public sealed class LocomotionGraph
     /// from the tree because the tree also reports a node *during* a crossfade, and the tests
     /// want the state that was chosen, not the one mid-blend.
     public string CurrentState { get; private set; } = "";
+
+    /// Where the current state has played to, and how long it is. This is the gait phase's
+    /// source: the walk cycle's position inside the clip, read back from the tree rather than
+    /// accumulated by hand, so the phase and the visible stride cannot disagree.
+    public float PlayPosition => _playback?.GetCurrentPlayPosition() ?? 0f;
+
+    public float PlayLength => (float)(_playback?.GetCurrentLength() ?? 0.0);
 
     /// False when there is no tree or no playback, in which case every call here is a no-op
     /// and the character animates nothing rather than throwing.
@@ -117,12 +138,20 @@ public sealed class LocomotionGraph
     /// <paramref name="blend"/> and <paramref name="treadBlend"/> are the ordinary and
     /// prone-water crossfade times. Prone treaded water is a large pose change, so a transition
     /// that touches <paramref name="treadClip"/> gets the longer one.
+    ///
+    /// A non-null <paramref name="locomotionKey"/> wraps the machine in a blend tree with the
+    /// cast's one-shot beside it (<see cref="CastNode"/>), so a cast animation can play over the
+    /// locomotion in the same tree. Wrapping moves every parameter the machine owns down a
+    /// level, so the parameter paths are built with the wrap in mind here rather than rewritten
+    /// afterwards -- and the cast clip node starts empty, which is only legal because whoever
+    /// plays the cast fills it in before the tree next processes.
     public void Build(
         AnimationTree tree,
         IReadOnlyList<GraphClip> clips,
         float blend,
         float treadBlend,
-        string treadClip)
+        string treadClip,
+        string locomotionKey = null)
     {
         if (tree == null || clips == null || clips.Count == 0)
             return;
@@ -137,6 +166,7 @@ public sealed class LocomotionGraph
 
         _tree = tree;
         _speedParams.Clear();
+        string prefix = locomotionKey == null ? "" : locomotionKey + "/";
 
         var machine = new AnimationNodeStateMachine();
         for (int i = 0; i < clips.Count; i++)
@@ -147,7 +177,7 @@ public sealed class LocomotionGraph
                 // Laid out on a grid purely so the generated graph is readable if it is ever
                 // opened in the editor.
                 new Vector2(200f + (i % 4) * 190f, 100f + (i / 4) * 90f));
-            _speedParams[clips[i].Name] = $"parameters/{clips[i].Name}/{SpeedNode}/scale";
+            _speedParams[clips[i].Name] = $"parameters/{prefix}{clips[i].Name}/{SpeedNode}/scale";
         }
 
         for (int from = 0; from < clips.Count; from++)
@@ -178,10 +208,27 @@ public sealed class LocomotionGraph
                 Reset = true,
             });
 
-        _tree.TreeRoot = machine;
+        if (locomotionKey == null)
+        {
+            _tree.TreeRoot = machine;
+        }
+        else
+        {
+            var blendTree = new AnimationNodeBlendTree();
+            blendTree.AddNode(locomotionKey, machine, new Vector2(0f, 0f));
+            blendTree.AddNode(CastClipNode, new AnimationNodeAnimation(), new Vector2(0f, 200f));
+            blendTree.AddNode(CastSpeedNode, new AnimationNodeTimeScale(), new Vector2(220f, 200f));
+            blendTree.AddNode(CastNode, new AnimationNodeOneShot(), new Vector2(440f, 100f));
+            blendTree.ConnectNode(CastSpeedNode, 0, CastClipNode);
+            blendTree.ConnectNode(CastNode, 0, locomotionKey);
+            blendTree.ConnectNode(CastNode, 1, CastSpeedNode);
+            blendTree.ConnectNode("output", 0, CastNode);
+            _tree.TreeRoot = blendTree;
+        }
+
         _tree.Active = true;
 
-        _playback = _tree.Get("parameters/playback").As<AnimationNodeStateMachinePlayback>();
+        _playback = _tree.Get($"parameters/{prefix}playback").As<AnimationNodeStateMachinePlayback>();
         if (_playback == null)
             return;
 

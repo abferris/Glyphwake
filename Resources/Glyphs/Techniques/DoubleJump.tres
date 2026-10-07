@@ -1,30 +1,72 @@
-[gd_resource type="Resource" script_class="TechniqueGlyphData" load_steps=8 format=3]
+[gd_resource type="Resource" script_class="TechniqueGlyphData" format=3 uid="uid://d0xhni8qubc3r"]
 
-[ext_resource type="Script" path="res://Scripts/Glyphs/Technique/TechniqueGlyphData.cs" id="1_technique"]
-[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/GlyphCost.cs" id="2_cost"]
-[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/StatValue.cs" id="3_statvalue"]
-[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/GlyphScaling.cs" id="4_scaling"]
-
-; ===== DOUBLE JUMP — the first authored glyph. School Flowing (movement), elements Zephyr +
-;     Anima (wind + body, non-damaging) per GlyphDecisions.md "Element principles (decided)".
-;     JumpCount is base 1 with Step scaling, Value 1 per StepSize 10 points: the glyph's own
-;     JumpCount stat reads exactly the number of mid-air jumps the points buy (1 at activation,
-;     +1 every 10 points, 10 at the full pool). The per-jump height curve is the consumer's
-;     (PlayerTechniques.AirJumpHeightAt), relative to the body's normal jump. Mana 10 up front,
-;     -0.5 per point past activation, flooring at 0 (GlyphCost.AmountAt). =====
-
-[sub_resource type="Resource" id="GlyphCost_mana"]
-script = ExtResource("2_cost")
-Resource = 0
-Amount = 10.0
-AmountPerPoint = -0.5
-PerSecond = 0.0
-PerSecondPerPoint = 0.0
+[ext_resource type="Script" uid="uid://bqkyvgh0xagxq" path="res://Scripts/Glyphs/Technique/TechniqueGlyphData.cs" id="1_technique"]
+[ext_resource type="Script" uid="uid://wxf1by2b6qfp" path="res://Scripts/Glyphs/Framework/GlyphCost.cs" id="2_cost"]
+[ext_resource type="Script" uid="uid://cd0qbq1kujf02" path="res://Scripts/Glyphs/Framework/StatValue.cs" id="3_statvalue"]
+[ext_resource type="Script" uid="uid://o7gyh81umvd5" path="res://Scripts/Glyphs/Framework/GlyphScaling.cs" id="4_scaling"]
+[ext_resource type="PackedScene" path="res://Scenes/AirStep.tscn" id="5_astep"]
+[ext_resource type="Texture2D" uid="uid://dirxofnx15oe0" path="res://Assets/Glyphs/double_jump_glyph.png" id="6_n0lv8"]
+[ext_resource type="Script" uid="uid://dlx3b6w3uxsgw" path="res://Scripts/Glyphs/Framework/GlyphCastVariant.cs" id="6_variant"]
+[ext_resource type="Script" uid="uid://cdmn2pr8vq0n1" path="res://Scripts/Glyphs/Framework/GlyphCastAnimation.cs" id="7_cast"]
+[ext_resource type="Script" uid="uid://bmas08rli75hl" path="res://Scripts/Glyphs/Framework/GlyphTag.cs" id="7_lx0qe"]
 
 [sub_resource type="Resource" id="StatValue_jumpcount"]
 script = ExtResource("3_statvalue")
 Key = 9
 Value = 1.0
+
+[sub_resource type="Resource" id="GlyphCastVariant_forward_l"]
+script = ExtResource("6_variant")
+Key = &"forward_l"
+Clip = &"Air Step Forward L"
+
+[sub_resource type="Resource" id="GlyphCastVariant_forward_r"]
+script = ExtResource("6_variant")
+Key = &"forward_r"
+Clip = &"Air Step Forward R"
+
+[sub_resource type="Resource" id="GlyphCastVariant_diagonal_l"]
+script = ExtResource("6_variant")
+Key = &"diagonal_l"
+Clip = &"Air Step Diagonal L"
+
+[sub_resource type="Resource" id="GlyphCastVariant_diagonal_r"]
+script = ExtResource("6_variant")
+Key = &"diagonal_r"
+Clip = &"Air Step Diagonal R"
+
+[sub_resource type="Resource" id="GlyphCastVariant_strafe_l"]
+script = ExtResource("6_variant")
+Key = &"strafe_l"
+Clip = &"Air Step Strafe L"
+
+[sub_resource type="Resource" id="GlyphCastVariant_strafe_r"]
+script = ExtResource("6_variant")
+Key = &"strafe_r"
+Clip = &"Air Step Strafe R"
+
+[sub_resource type="Resource" id="GlyphCastVariant_backward_l"]
+script = ExtResource("6_variant")
+Key = &"backward_l"
+Clip = &"Air Step Backward L"
+
+[sub_resource type="Resource" id="GlyphCastVariant_backward_r"]
+script = ExtResource("6_variant")
+Key = &"backward_r"
+Clip = &"Air Step Backward R"
+
+[sub_resource type="Resource" id="GlyphCastAnimation_airstep"]
+script = ExtResource("7_cast")
+Scene = ExtResource("5_astep")
+Clip = &"Air Step Forward L"
+Variants = Array[ExtResource("6_variant")]([SubResource("GlyphCastVariant_forward_l"), SubResource("GlyphCastVariant_forward_r"), SubResource("GlyphCastVariant_diagonal_l"), SubResource("GlyphCastVariant_diagonal_r"), SubResource("GlyphCastVariant_strafe_l"), SubResource("GlyphCastVariant_strafe_r"), SubResource("GlyphCastVariant_backward_l"), SubResource("GlyphCastVariant_backward_r")])
+BlendIn = 0.15
+BlendOut = 0.2
+
+[sub_resource type="Resource" id="GlyphCost_mana"]
+script = ExtResource("2_cost")
+Amount = 10.0
+AmountPerPoint = -0.5
 
 [sub_resource type="Resource" id="GlyphScaling_jumpcount"]
 script = ExtResource("4_scaling")
@@ -35,12 +77,11 @@ StepSize = 10.0
 
 [resource]
 script = ExtResource("1_technique")
+Costs = Array[ExtResource("2_cost")]([SubResource("GlyphCost_mana")])
 DisplayName = "Double Jump"
 Description = "Press jump again while airborne to jump a second time, steering your arc slightly toward the held direction. Points buy more mid-air jumps -- one every 10 points, each starting at half a normal jump's height and reaching twice it over its decade -- and spend less mana. The chain resets when you land."
-Trigger = 0
-Costs = Array[Object]([SubResource("GlyphCost_mana")])
-Held = false
-BaseStats = Array[Object]([SubResource("StatValue_jumpcount")])
-Scalings = Array[Object]([SubResource("GlyphScaling_jumpcount")])
+Icon = ExtResource("6_n0lv8")
+CastAnimation = SubResource("GlyphCastAnimation_airstep")
+BaseStats = Array[ExtResource("3_statvalue")]([SubResource("StatValue_jumpcount")])
+Scalings = Array[ExtResource("4_scaling")]([SubResource("GlyphScaling_jumpcount")])
 Elements = Array[int]([4, 5])
-Tags = Array[Object]([])

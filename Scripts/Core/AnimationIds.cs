@@ -39,6 +39,20 @@ public static class AnimationIds
     public const string DiagonalForwardLeft = "Diagonal Forward Left";
     public const string DiagonalForwardRight = "Diagonal Forward Right";
 
+    // The ground-jump clips. Every jump plays the forward family regardless of the direction
+    // it is fired in: the direction shows as a tilt of the body instead (PlayerController's
+    // jump tilt), because the directional clips read as marching rather than as a jump. Two
+    // lead-foot variants remain, because a jump off the leading foot is a different pose from
+    // a jump off the trailing one. The bare Jump clip stays for the standing-still jump, which
+    // has no stride to lead with, and for a fall off a ledge, which is not a jump at all.
+    //
+    // The other six directional clips (Diagonal, Strafe, Backward) are still generated into the
+    // library by tools/build_stickman.gd and still exist there -- they are simply no longer in
+    // ReachableClips, so the graph has no state for them. Bring them back by re-adding the
+    // constants and their ReachableClips entries.
+    public const string JumpForwardL = "Jump Forward L";
+    public const string JumpForwardR = "Jump Forward R";
+
     public const string WalkDiagonalForwardRight = Walk + " " + DiagonalForwardRight;
 
     /// The five Backward clips in the library are not in this set, and that is deliberate
@@ -111,6 +125,13 @@ public static class AnimationIds
         return MoveDirection.None;
     }
 
+    /// Which ground-jump clip plays for a jump off a given foot. The trailing letter is the
+    /// lead foot, matching the air-step clips ("Air Step Forward L" = forward, left foot
+    /// leading). Direction is deliberately not a parameter: every jump plays the forward
+    /// family and the body tilts toward the jump direction instead.
+    public static string JumpClipFor(bool leadsLeft)
+        => leadsLeft ? JumpForwardL : JumpForwardR;
+
     /// Every clip this character can end up playing, in the order the graph lays them out.
     ///
     /// This is the list the AnimationTree is built from, so it is deliberately the *reachable*
@@ -136,5 +157,7 @@ public static class AnimationIds
         Run + " " + StrafeRight,
         Run + " " + DiagonalForwardLeft,
         Run + " " + DiagonalForwardRight,
+        JumpForwardL,
+        JumpForwardR,
     };
 }

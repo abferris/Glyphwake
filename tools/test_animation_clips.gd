@@ -17,9 +17,10 @@ extends SceneTree
 ## The clips themselves are generated -- build_stickman.gd writes Scenes/Stickman.tscn from the
 ## PolyOne FBX -- so this also catches the generator and the C# constants disagreeing.
 ##
-## Clips in the library that no state names are reported, not failed: AnimationIds.cs:127
-## documents Sitting, Yelling and the five Backward clips as deliberately unreachable, since
-## walking backwards plays the forward clip reversed.
+## Clips in the library that no state names are reported, not failed: AnimationIds.cs
+## documents Sitting, Yelling, the five Backward clips and the six non-forward directional
+## jump clips as deliberately unreachable -- walking backwards plays the forward clip
+## reversed, and every jump plays the forward clip with the body tilting instead (10-06).
 
 const PLAYER := "res://Scenes/Player.tscn"
 const ANIM_PLAYER_PATH := "Visual/Anim"
@@ -71,6 +72,11 @@ func _physics_process(_delta: float) -> bool:
 		expect(tree != null, "no AnimationTree at " + ANIM_TREE_PATH)
 		if tree != null:
 			machine = tree.tree_root
+			# The tree root is a blend tree when the technique has a cast animation in it, and
+			# the state machine sits under its "Locomotion" node; unwrap so the checks below
+			# still read the machine.
+			if machine is AnimationNodeBlendTree and (machine as AnimationNodeBlendTree).has_node("Locomotion"):
+				machine = (machine as AnimationNodeBlendTree).get_node("Locomotion")
 			expect(machine != null, "the AnimationTree has no state machine root; was the graph built?")
 		phase = 1
 		return false
