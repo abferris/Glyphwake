@@ -24,6 +24,9 @@ Legend:
 | `Scripts/Player/Animation/Movement/LocomotionGraph.cs` | C# | Builds the AnimationTree state machine | Reusable (must edit) |
 | `Scripts/Glyphs/Framework/GlyphData.cs` | C# | Data (`Resource`) base | Reusable |
 | `Scripts/Glyphs/Framework/GlyphCatalog.cs` | C# | Data (`Resource`) — which glyphs exist | Reusable |
+| `Scripts/Glyphs/Framework/GlyphCastAnimation.cs` | C# | Data (`Resource`) — a cast animation as its own scene + clip + directional variants, with a `Validate` | Reusable |
+| `Scripts/Glyphs/Framework/GlyphCastVariant.cs` | C# | Data (`Resource`) — one variant (key → clip) + the closed key vocabulary | Reusable |
+| `Scripts/Player/Animation/Movement/CastAnimationLayer.cs` | C# | Cast playback as a filter layer in the locomotion tree — cast clips merged into a `cast` library, a one-shot runs the clip over the bones it names | Reusable |
 | `Scripts/Glyphs/Framework/GlyphSchool.cs` | C# | Enum | Reusable |
 | `Scripts/Glyphs/Framework/GlyphElement.cs` | C# | Enum | Reusable |
 | `Scripts/Glyphs/Active/ActiveGlyphData.cs` | C# | Data (`Resource`) | Reusable |
@@ -97,8 +100,9 @@ Drop-in for any Godot controller exposing `EnterWater(float)` / `ExitWater()`.
 
 ### `AnimationIds.cs` + `PlayerAnimator.cs` + `LocomotionGraph.cs` (C#, runtime)
 The animation pair. `AnimationIds` holds the clip-name constants, `ClipFor(gait, direction)`
-(resolves one of 6 ground clips per gait; backward plays the forward clip **reversed**), and
-`ReachableClips` — the 16 clips the graph is built from. `PlayerAnimator` holds a
+(resolves one of 6 ground clips per gait; backward plays the forward clip **reversed**) and
+`JumpClipFor(lead foot)` (the forward jump for every direction — direction reads as a body
+tilt), and `ReachableClips` — the 18 clips the graph is built from. `PlayerAnimator` holds a
 `LocomotionGraph` rather than an `AnimationPlayer` and tells it where to go, so the rules and
 the mechanism read separately.
 
@@ -142,13 +146,15 @@ yet — the technique layer (`PlayerTechniques.cs`) is the first consumer.
 
 | Script | Kind | Reuse |
 |--------|------|-------|
-| `GlyphData.cs` | Abstract base `Resource`: DisplayName/Description/Icon, `GlyphSchool`, `GlyphElement[]`, `GlyphTag[]`, `StatValue[]` base stats + `GlyphScaling[]`, the point-budget guideposts, `IsActiveAt` / `StatAt` / `TryStatAt` / `HasElement` / `HasTag` | Reusable |
+| `GlyphData.cs` | Abstract base `Resource`: DisplayName/Description/Icon, `GlyphSchool`, `GlyphElement[]`, `GlyphTag[]`, `GlyphCastAnimation CastAnimation`, `StatValue[]` base stats + `GlyphScaling[]`, the point-budget guideposts, `IsActiveAt` / `StatAt` / `TryStatAt` / `HasElement` / `HasTag` | Reusable |
+| `GlyphCastAnimation.cs` | `Resource`: `PackedScene Scene` + `StringName Clip` (the fallback an unknown key resolves to) + `GlyphCastVariant[] Variants` (the directional table, `ClipFor(key)`) + `BlendIn`/`BlendOut`, `HasAnimation`, and a `Validate` that instantiates the scene to confirm it holds the named clip and every variant. Carried as a scene rather than a clip name so `AnimationIds.ReachableClips` stays locomotion-only — see `GlyphDecisions.md` |
+| `GlyphCastVariant.cs` | `Resource`: `StringName Key` + `StringName Clip`, one entry in a cast animation's variant table; the closed key vocabulary (`forward_l` … `backward_r`) and `KeyFor(direction, lead foot)` with the gait clips' family folding | Reusable |
 | `GlyphSchool.cs` | Enum: Kindling / Warding / Calling / Seeking / Flowing / Shaping | Reusable |
 | `GlyphElement.cs` | Enum: None / Inferno / Aqua / Terra / Zephyr / Anima / Lux | Reusable |
 | `GlyphTag.cs` | `Resource` free-form tag with a stable `StringName Id`; matching is by `Id`, never resource identity | Reusable |
 | `GlyphLoadout.cs` | `Node` (player-owned): `GlyphLoadoutEntry[]` keyed by resource path, `TotalPoints` / `PointsFor` / `IsActive` / `TrySetPoints` against the shared 100-point pool | Reusable |
 | `GlyphLoadoutEntry.cs` | `Resource`: one glyph + the points that player put in it | Reusable |
-| `ActiveGlyphData.cs` | `Resource`: cast/effect mode, target type + affects, `GlyphCost[]`, `PackedScene Payload`. Numbers (CastTime, Cooldown, Duration, Range) are base stats scaled by its `Scalings` | Reusable |
+| `ActiveGlyphData.cs` | `Resource`: cast/effect mode, target type + affects, `GlyphCost[]`, `PackedScene Payload`, `PackedScene ImpactPayload`. Numbers (CastTime, Cooldown, Duration, Range) are base stats scaled by its `Scalings` | Reusable |
 | `TechniqueGlyphData.cs` | `Resource`: `TechniqueTrigger`, `GlyphCost[]`. A capability, not a castable skill — no hotbar slot, on whenever points are in it; stats inherited from `GlyphData` | Reusable |
 | `PassiveGlyphData.cs` | `Resource`: `SelfStatModifier[]`, `GlyphModifier[]`, `PassiveTrigger[]` | Reusable |
 | `SelfStatModifier.cs` | `Resource`: `StatKey` + Add/Percent/Multiply + `ValueAt(points)` on the caster's own stat | Reusable |

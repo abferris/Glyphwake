@@ -45,8 +45,9 @@ swimming in place (the swimming design is folded into this file, further below).
 
 ## Animations
 The clip library is **generated**: `tools/build_stickman.gd` imports the PolyOne FBX and writes
-`Scenes/Stickman.tscn` (34 clips) via `ResourceSaver`. Never hand-edit that scene — re-run the
-script.
+`Scenes/Stickman.tscn` (42 clips: the 33 FBX clips, the synthesized `Swim Tread`, and 8
+synthesized directional ground jumps) via `ResourceSaver`, and writes the air-step cast clips to
+`Scenes/AirStep.tscn` the same way. Never hand-edit either scene — re-run the script.
 
 Decision: locomotion plays **discrete per-direction clips** chosen from an explicit direction
 table, and the AnimationTree is a state machine **built in code**. This replaces the old Unity
@@ -54,9 +55,10 @@ table, and the AnimationTree is a state machine **built in code**. This replaces
 
 | Part | Where | Role |
 |------|-------|------|
-| Clip names + direction table | `Scripts/Core/AnimationIds.cs` | `ClipFor(gait, direction)` resolves one of 6 ground clips per gait; `ReachableClips` is the 16 clips the graph is built from |
-| Graph construction | `Scripts/Player/Animation/Movement/LocomotionGraph.cs` | 16 states where every state reaches every other — 240 transitions plus one from `Start` — generated from a uniform rule |
-| What to play | `Scripts/Player/Animation/Movement/PlayerAnimator.cs` | Holds a `LocomotionGraph` rather than an `AnimationPlayer` and tells it where to go, so the rules and the mechanism can be read separately |
+| Clip names + direction table | `Scripts/Core/AnimationIds.cs` | `ClipFor(gait, direction)` resolves one of 6 ground clips per gait; `JumpClipFor(lead foot)` resolves the forward jump for every direction — direction reads as a body tilt instead; `ReachableClips` is the 18 clips the graph is built from |
+| Graph construction | `Scripts/Player/Animation/Movement/LocomotionGraph.cs` | 18 states where every state reaches every other — 306 transitions plus one from `Start` — generated from a uniform rule; optionally wraps the machine with the cast's one-shot |
+| What to play | `Scripts/Player/Animation/Movement/PlayerAnimator.cs` | Holds a `LocomotionGraph` rather than an `AnimationPlayer` and tells it where to go, so the rules and the mechanism can be read separately; exposes the gait phase |
+| Cast playback | `Scripts/Player/Animation/Movement/CastAnimationLayer.cs` | Plays a glyph's cast animation as a layer in the same tree: clips merged into a `cast` library, a one-shot runs the clip over the bones its tracks name |
 
 - **Backward plays the forward clip in reverse**, with left and right swapped. The five authored
   `Backward` clips stay unused (`BackwardClipsUsed = false`), stated rather than implied: switching
@@ -64,14 +66,120 @@ table, and the AnimationTree is a state machine **built in code**. This replaces
 - **Swim uses symmetric clips**, not directional ones — `Swimming Loop` and `Swim Tread`. A breast
   stroke reads correctly from every angle.
 - `ReachableClips` is the *reachable* set rather than the whole library, so a state cannot exist for
-  a clip the movement code cannot ask for. `Sitting`, `Yelling` and the five `Backward` clips are in
-  the library and deliberately absent.
+  a clip the movement code cannot ask for. `Sitting`, `Yelling`, the five `Backward` clips and the
+  six non-forward directional jump clips are in the library and deliberately absent (the jump
+  clips since 10-06, see the jumping section below).
 - **The graph is not editable in the AnimationTree dock.** That is the real cost of generating it.
   The payoff is the next step: replace 16 of these states with two blend spaces, which deletes most
   of those transitions instead of maintaining them.
 - **The clip list can drift from the generated library.** `tools/test_animation_clips.gd` compares
   the built graph against the real library, and `LocomotionGraph.MissingClips` reports drift once up
   front instead of one raw engine error per bad name.
+
+### The air-step cast, and the gait phase it reads (10-03, session 5)
+
+The double jump is the first glyph with a working cast animation, and it settles the questions the
+attachment work left open:
+
+- **A cast plays as a layer in the same tree, not from a second AnimationPlayer.** A second
+  AnimationPlayer writing the same `Skeleton3D` as the locomotion tree is a second writer, and
+  which one wins is process order — the two-writer question in `CURRENT_TODO.md`. The answer that
+  dissolves the question: the cast's clips are merged into a separate `cast` library on the main
+  player, and a `AnimationNodeOneShot` in the tree runs the clip once, fades in and out, and hands
+  back. The one-shot's **filters** decide which tracks the cast overrides — set from the clip's own
+  track list at cast time — so locomotion keeps playing underneath on every other bone. One writer,
+  per-bone takeover, no ordering assumption. Pinned by `tools/test_air_jump_animation.gd`, which
+  asserts the locomotion state stays `Jumping Up` while a step is playing.
+- **An `AnimationNodeAnimation`'s clip cannot be switched through a parameter.** In Godot 4.7 the
+  `animation` property is not a tree parameter, so a `parameters/<node>/animation` set is silently
+  dropped and the node keeps playing whatever it was built with — the cast clip node stayed empty,
+  the one-shot's shot ended instantly, and nothing fired. The clip is switched on the node resource
+  itself (`CastAnimationLayer` holds the reference), which runs the setter and marks the node's
+  cached animation stale so the tree resolves the new clip.
+- **The gait phase is read back from the tree, not accumulated.** No gait phase existed: the
+  locomotion system is discrete with no cycle position exposed. `LocomotionGraph` now exposes
+  `PlayPosition`/`PlayLength` (the state machine playback's own position), and `PlayerAnimator`
+  wraps it into `GaitPhase` (0..1). A jump off the leading foot continues the stride the walk cycle
+  is actually in.
+- **The lead foot boundary is measured, not guessed.** The left foot is forward for roughly the
+  first half of the stride: 0.03–0.52 of the walk cycle and 0–0.45 of the run, measured by sampling
+  the two ankles' positions through the cycles (`tools/probe_walk_phase.gd`). A single boundary
+  (`PlayerAnimator.GaitLeadPhase = 0.5`) sits within a hair of both; it is the only thing to move
+  if a playtest disagrees.
+- **The ground jump leads from the gait; the air jump alternates.** A ground jump latches the
+  direction (from held input) and the lead foot (from the gait phase), and clears them on any
+  grounded frame — so a fall off a ledge, which is not a jump, keeps the bare `Jumping Up` clip
+  through the descent. Standing still has no stride to lead with and keeps `Jumping Up` too. An air
+  jump continues the stride: the first step leads with the foot that was *not* leading at takeoff,
+  and every jump after alternates from there.
+- **Every jump plays the forward clip; direction reads as a body tilt (10-06).** The eight
+  directional jump clips (four families × two lead feet) were tried and the non-forward ones read
+  as weird rather than as jumps, and the forward one read as marching — so the direction is no
+  longer carried by a ground-jump clip at all. On the same pass, playtest showed the same
+  problem in the **air-step cast**: the strafe variant abducted the legs sideways and the
+  backward one drove them behind, reading as limbs flopping rather than a step. So both the
+  ground jumps and the air steps play one forward leap — `JumpClipFor` and the air-step cast
+  both take only the lead foot — and the direction shows as a lean of the visual instead:
+  `PlayerController` latches the fired input as `_jumpTilt` with the jump (swung to the held
+  input on a steered air jump, cleared on any grounded frame), and `UpdateLean` pitches/rolls
+  the body `JumpTiltDeg` (12°) toward it at `JumpTiltSpeed` (90°/s) for as long as the body is
+  airborne. The sign convention is the swim lean's. The lead-foot alternation is untouched —
+  it still picks `Jump Forward L/`Air Step Forward L` vs the R row. The ground clip set shrank:
+  the six non-forward jump clips left `ReachableClips` (still in the generated library, just no
+  state for them), and the six non-forward air-step variants stay in `DoubleJump.tres`/`AirStep.tscn`
+  but are never selected.
+- **Eight air-step clips, synthesized, as jumps rather than stair steps.** The air steps are built
+  from scratch like the `Swim Tread` synthesizer; the synthesized ground jumps share the same
+  **push-off beats** (`_push_beats`): the legs **load** (the plant knee
+  bends, the pelvis dips) then **push** (the plant leg extends with the toe down, the lead
+  knee reaches its peak **at the same time** -- the thigh to horizontal, the shin tucked
+  105° -- and the arms drive up, the arm opposite the lead leg higher). The **pelvis dips and
+  rises with the pair** (a root Y track, the run bob's machinery): the leg motion alone never
+  moves the body, so the surface being pushed off has to show in the hips -- without it every
+  jump read as walking up stairs. The **secondary jumps are strenuous, not casual**: each air
+  step has the full jump cycle -- the plant foot **flexes, compresses then pushes up** (the
+  raised knee stays folded through the coil -- it never straightens mid-step, which is the
+  stair-step read -- then the knee bends deeper as the body sinks and only straightens when
+  the leg explodes off the surface), the **pelvis sinks 0.18 m in the coil and rises 0.22 m on
+  the push**, the **lead knee snaps up fast** (its peak by 0.2 of the step, holding -- "not
+  being fast enough" was the read), the **arms counter-move** (back on the coil, up on the
+  push) and the spine curls on the coil. The **chamber itself is fast**: it runs over the front
+  fifth of the step (`ASTEP_COIL_START` 0.02, `ASTEP_COIL_SPAN` 0.20) with the push following
+  immediately (`ASTEP_PUSH_START` 0.14) -- a jump chambers and fires, it does not load, hold and
+  release, and the slow coil was the read ("needs to happen faster").
+  **The plant leg's push-off is an explosive extension that overshoots** ("make the pushing down
+  leg go faster with more power"). The thigh drops out of horizontal over `ASTEP_DESCENT_SPAN`
+  0.30 and the knee fires straight over `ASTEP_PUSH_SPAN` 0.20, both inside the front third, and
+  a **`drive` envelope then carries the leg *past* extension**: the thigh 26° into hip
+  extension, the knee 8° through straight, the toe 22° through flat. Overshoot is what reads as
+  power -- a leg that stops dead at extension has merely arrived at a pose, a leg that snaps
+  through it has thrown off the ground. The drive is a **bell that returns**, not a hold, and
+  that is structural rather than cosmetic: the clips chain by swapping legs, so a step's plant
+  leg *is* the next step's lead leg and the clip's end pose is the next clip's start pose, bone
+  for bone; a held overshoot would end the plant leg in hip extension and snap the swap. The
+  return eases off instead -- slower out than back (`ASTEP_DRIVE_BIAS` 0.35), so the snap reads
+  faster than the relax. Every envelope saturates and returns before the clip ends, so the pose
+  the next step chains from does not depend on these timings.
+  The air-step arms are the walk's own stroke resampled
+  onto the half-cycle whose arm swing matches the leg leading, **amplified around the
+  stroke's own mean** (1.6×) -- measured from the rig's T-pose bind pose instead, the
+  extrapolation pivots the swing asymmetrically and throws the hands above the head at the
+  swing's extremes.
+  Numbers: the lead hip 90°/knee 105°, the plant coil knee +20°, the coil curl 8°, the
+  pelvis 0.18/0.22 m; the plant leg's drive-through 26°/8°/22°; the beat boundaries
+  (`ASTEP_COIL_START` 0.02, `ASTEP_PUSH_START` 0.14, `ASTEP_LEAD_PEAK` 0.2,
+  `ASTEP_DRIVE_START` 0.30) and all magnitudes are first-pass tuning to be checked by eye
+  (`tools/probe_restyle_check.gd` samples the arcs' key poses so a retune can be read off the
+  clips without playing). The structure (four families × two lead feet) is the decision.
+- **`AirJumpRedirect` is 0.5** (a 45° swing through a right angle). It was retuned to 0.3 for the
+  step-jump pass and reverted the same day at the user's request — the redirect capability stays,
+  and the number lives in one obvious place on the body
+  (`PlayerController.AirJumpRedirect`, with a marker comment). `tools/test_double_jump.gd`
+  reads the expected turn off the body rather than hardcoding it, so the next retune cannot stale
+  the test.
+- **One step is scaled to the arc it actually flies**, the same `PredictAirTime` machinery the jump
+  clips use, so one authored step covers a half-height air jump as well as a doubled one.
+
 
 ### Three measured things about AnimationTree
 None of these are guessable, and the first two assumptions made about them were both wrong.
