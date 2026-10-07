@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Glyphs/Payloads/TerraFistPayload.cs" id="1_payload"]
+
+[node name="TerraFist" type="Node3D"]
+script = ExtResource("1_payload")

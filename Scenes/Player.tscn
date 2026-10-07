@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://Scripts/Player/Data/PlayerController.cs" id="1_player"]
 [ext_resource type="Script" path="res://Scripts/Player/Cameras/CameraController.cs" id="2_camera"]
@@ -9,6 +9,8 @@
 [ext_resource type="Script" path="res://Scripts/Player/Data/PlayerResources.cs" id="8_resources"]
 [ext_resource type="Script" path="res://Scripts/Player/Data/PlayerTechniques.cs" id="9_techniques"]
 [ext_resource type="Resource" path="res://Resources/Glyphs/GlyphCatalog.tres" id="10_catalog"]
+[ext_resource type="PackedScene" path="res://Scenes/UI/Hud.tscn" id="11_hud"]
+[ext_resource type="Script" path="res://Scripts/Player/Data/PlayerActives.cs" id="12_actives"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.2
@@ -41,8 +43,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
 script = ExtResource("2_camera")
 
 ; ===== GLYPH RUNTIME — the player-owned loadout (points live here, never on GlyphData), the
-;     resource pools a glyph's cost is paid out of, and the technique layer that turns points
-;     into capability. The nodes resolve each other by path in _Ready (PlayerRig pattern), not
+;     resource pools a glyph's cost is paid out of, the technique layer that turns points
+;     into capability, and the active layer that turns points into a cast the cast input
+;     fires. The nodes resolve each other by path in _Ready (PlayerRig pattern), not
 ;     by exported node references.
 ;
 ;     Which glyphs exist lives in Resources/Glyphs/GlyphCatalog.tres, referenced once below. It
@@ -61,6 +64,9 @@ script = ExtResource("8_resources")
 [node name="Techniques" type="Node" parent="."]
 script = ExtResource("9_techniques")
 
+[node name="Actives" type="Node" parent="."]
+script = ExtResource("12_actives")
+
 ; ===== DEBUG VIEW — a second, independent camera on ToggleKey (F3). It takes the viewport from the head camera and hands it back when toggled off. Delete this node (and this comment) and Scripts/Player/DebugChaseCamera.cs when the game no longer needs a chase view =====
 [node name="DebugChaseCamera" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.9398, 0.3417, 0, -0.3417, 0.9398, 2.2, 2.6, 3.4)
@@ -71,3 +77,5 @@ script = ExtResource("4_debug")
 ; ===== SURFACE SWIM POSE — levels the head and holds both hands just below the waterline (ArmSubmersion) while swimming at the surface =====
 [node name="SurfaceSwimPose" type="SkeletonModifier3D" parent="Visual/Skeleton3D"]
 script = ExtResource("5_pose")
+
+[node name="Hud" parent="." instance=ExtResource("11_hud")]

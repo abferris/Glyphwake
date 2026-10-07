@@ -21,9 +21,15 @@ public partial class PlayerController : CharacterBody3D
     // velocity on a mid-air jump, without gaining or losing speed. Steering is a redirect of
     // an existing arc, not air control from a standstill -- no held input means no redirect,
     // and starting horizontal motion mid-air is the open feel question (see WORKLOG-10-02).
+    //
+    // ==== THE AIR JUMP'S REDIRECT LIVES HERE ====
+    // This was briefly 0.3 (a 27 degree swing) -- reverted to 0.5 (a 45 degree swing through a
+    // right angle) at the user's request; the redirect capability itself stays. To retune how
+    // hard an air jump steers, change the number below. Nothing else needs touching:
+    // test_double_jump reads the expected turn off this value, so no test goes stale.
     [Export(PropertyHint.Range, "0,1,0.05")] public float AirJumpRedirect = 0.5f;
 
-    [Export] public float SwimSpeed = 3f;
+[Export] public float SwimSpeed = 3f;
     [Export] public float SurfaceSwimSpeed = 5f;
     [Export] public float SwimAcceleration = 8f;
     // How far below the head bone the waterline sits while treading. The float settles the body at
@@ -91,11 +97,25 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float MinJumpScale = 0.5f;
     [Export] public float MaxJumpScale = 1.5f;
 
+    // The jump's direction read: how far the body leans toward the direction a jump was fired
+    // in, in degrees. Every jump plays the forward clip, so this is what carries the direction
+    // -- pitch leans the body along the jump's forward/back component, roll along its
+    // left/right. Kept deliberately small: a lean into the arc, not a dive. The sign convention
+    // is the one UpdateLean already uses for the swim lean (forward input = positive pitch,
+    // right input = positive roll), which is the mapping tuned by eye.
+    [Export(PropertyHint.Range, "0,30,1")] public float JumpTiltDeg = 12f;
+    // How fast the body reaches that lean, in degrees per second. Faster than SwimLeanSpeed
+    // because a jump arc is short -- the tilt has to be established within the first fraction
+    // of the ascent or it never reads as part of the jump.
+    [Export] public float JumpTiltSpeed = 90f;
+
     private readonly LocomotionState _state = new();
 
     private PlayerRig _rig;
     private LocomotionGraph _graph;
     private PlayerAnimator _animator;
+    private CastAnimationLayer _castLayer;
+    private PlayerActives _actives;
 
     private Vector3 _horizontalVelocity = Vector3.Zero;
     private Vector3 _impulseVelocity = Vector3.Zero;
@@ -103,10 +123,27 @@ public partial class PlayerController : CharacterBody3D
     private float _verticalVelocity;
     private bool _jumpHeld;
     private int _airJumpsUsed;
+    private MoveDirection _jumpDirection = MoveDirection.None;
+    private bool _jumpLeadsLeft = true;
+    // The direction the body leans while airborne: the input the jump was fired in, clamped to
+    // at most unit length so a diagonal does not lean harder than a straight jump. Latched with
+    // _jumpDirection on a ground jump, swung to the held input on a successful air jump (a
+    // neutral air jump leaves it, so redirecting nothing keeps the arc's own lean), and cleared
+    // on any grounded frame without a jump.
+    private Vector2 _jumpTilt = Vector2.Zero;
     private float _diveCharge;
     private float _leanRoll;
     private float _leanPitch;
     private float _bodyPitch;
+
+    // The cast input's edge latch: a press, not a hold, exactly like the jump. The rest of the
+    // cast's state lives on the payload it spawns -- the controller only decides that a cast
+    // happened and what it was, never what the payload does with it.
+    private bool _castHeld;
+    // The last frame's grounded read, sampled so the touchdown can be told apart from any other
+    // grounded frame: the cast abort is a landing cut, not a per-frame one, and only the frame
+    // that arrives from the air is a landing.
+    private bool _wasAirborne;
 
     public PlayerRig Rig => _rig;
     public LocomotionMode Mode => _state.Mode;
@@ -136,12 +173,32 @@ public partial class PlayerController : CharacterBody3D
     public string AnimationState => _animator?.CurrentState ?? "";
     public float AnimationSpeed => _animator?.PlaybackSpeed ?? 1f;
 
+    /// The cast clip currently playing over the locomotion, without the library namespace, or
+    /// an empty string when none is. Read by the GDScript tests: the cast's one-shot reports
+    /// nothing on its own, so this is the honest way to ask whether a step is playing.
+    public string CastState => _castLayer?.CurrentClip ?? "";
+
+    /// The cast clips merged into the player's library from the casts' scenes -- the technique's
+    /// and the active's. Empty when no cast animation is authored.
+    public string[] CastClipNames => _castLayer?.ClipNames ?? new string[0];
+
+    /// The gait phase the character's stride is in, as a fraction of the cycle. The lead-foot
+    /// read hangs off it; exposed for the same reason the animation state is.
+    public float GaitPhase => _animator?.GaitPhase ?? 0f;
+
     /// The player's techniques: what turns points in a <see cref="Glyphwake.Glyphs.TechniqueGlyphData"/>
     /// into capability. Resolved by path in _Ready like the rig's nodes; a body without one
     /// simply has no techniques.
     public PlayerTechniques Techniques { get; private set; }
 
     private const string TechniquesNodePath = "Techniques";
+
+    /// The player's active glyphs: what turns points in an
+    /// <see cref="Glyphwake.Glyphs.ActiveGlyphData"/> into a cast the cast input fires. Resolved
+    /// by path in _Ready like the techniques; a body without one cannot cast actives.
+    public PlayerActives Actives { get; private set; }
+
+    private const string ActivesNodePath = "Actives";
 
     public Vector2 SwimLeanDeg => new Vector2(_leanPitch, _leanRoll);
     public float LeanPitchRad => _leanPitch;
@@ -157,6 +214,7 @@ public partial class PlayerController : CharacterBody3D
         _rig = new PlayerRig(this);
 
         Techniques = GetNodeOrNull<PlayerTechniques>(TechniquesNodePath);
+        _actives = GetNodeOrNull<PlayerActives>(ActivesNodePath);
 
         _graph = new LocomotionGraph(_rig.Anim);
         _animator = new PlayerAnimator(_graph);
@@ -174,9 +232,14 @@ public partial class PlayerController : CharacterBody3D
 
     /// Assembles the AnimationTree from the clips the movement code can actually reach.
     ///
-    /// The tree is built in code rather than authored in the scene on purpose: it is 16 states
-    /// and 240 transitions, which is a uniform "any state can reach any other" rule and nothing
+    /// The tree is built in code rather than authored in the scene on purpose: it is 18 states
+    /// and 306 transitions, which is a uniform "any state can reach any other" rule and nothing
     /// a person would maintain by hand in the AnimationTree dock.
+    ///
+    /// The tree only carries a cast layer when a cast animation exists to play in it -- the
+    /// technique's or an active's. Wrapping the machine moves every parameter it owns down a
+    /// level, so the wrap and the playback path have to agree, and a body with no casts keeps
+    /// the machine as the whole tree, exactly as before.
     private void BuildAnimationGraph()
     {
         if (_rig.AnimTree == null)
@@ -186,7 +249,21 @@ public partial class PlayerController : CharacterBody3D
         for (int i = 0; i < clips.Length; i++)
             clips[i] = new GraphClip(AnimationIds.ReachableClips[i]);
 
-        _graph.Build(_rig.AnimTree, clips, AnimBlend, TreadBlend, AnimationIds.Tread);
+        Glyphs.GlyphCastAnimation cast = Techniques?.Technique?.CastAnimation;
+        Glyphs.GlyphCastAnimation activeCast = _actives?.Active?.CastAnimation;
+        bool withCast = (cast != null && cast.HasAnimation) || (activeCast != null && activeCast.HasAnimation);
+
+        _graph.Build(_rig.AnimTree, clips, AnimBlend, TreadBlend, AnimationIds.Tread,
+            withCast ? LocomotionGraph.LocomotionNode : null);
+
+        if (withCast)
+        {
+            _castLayer = new CastAnimationLayer(_rig.AnimTree, _rig.Anim);
+            if (cast != null && cast.HasAnimation)
+                _castLayer.Build(cast);
+            if (activeCast != null && activeCast.HasAnimation)
+                _castLayer.BuildActive(activeCast);
+        }
     }
 
     private void SyncAnimatorTuning()
@@ -229,6 +306,10 @@ public partial class PlayerController : CharacterBody3D
                 break;
         }
 
+        // The active cast rides no locomotion mode: it fires grounded, airborne, wading or
+        // swimming -- the spec only requires "not grounded" to work.
+        UpdateCastInput();
+
         MoveAndSlide();
         WadeStepUp();
         UpdateBodyPitch(dt);
@@ -240,12 +321,15 @@ public partial class PlayerController : CharacterBody3D
                 _horizontalVelocity.Length(),
                 input,
                 IsOnFloor(),
-                _verticalVelocity),
+                _verticalVelocity,
+                _jumpDirection,
+                _jumpLeadsLeft),
             dt,
             GlobalPosition.Y,
             _rig.RestHeight,
             Gravity,
             GroundHeightUnderBody);
+        _castLayer?.Update();
     }
 
     /// The animator only needs the ground height on the frame it switches to the jump clip, so
@@ -350,13 +434,23 @@ public partial class PlayerController : CharacterBody3D
     {
         float targetRoll = 0f;
         float targetPitch = 0f;
+        float leanSpeed = SwimLeanSpeed;
         if (_state.IsSurfaceSwimming)
         {
             targetRoll = input.X * MaxSwimStrafeRollDeg;
             targetPitch = Mathf.Clamp(input.Y, 0f, 1f) * MaxSwimForwardPitchDeg;
         }
-        _leanRoll = Mathf.MoveToward(_leanRoll, targetRoll, SwimLeanSpeed * dt);
-        _leanPitch = Mathf.MoveToward(_leanPitch, targetPitch, SwimLeanSpeed * dt);
+        // The jump's direction read: the body leans toward the jump it is on for as long as it
+        // is airborne, and the lean stands down -- easing, not snapping -- on the landing frame
+        // that clears the latch. A fall has no latch, so it stays level.
+        else if (!IsOnFloor() && _jumpTilt.LengthSquared() > 0.0001f)
+        {
+            targetPitch = _jumpTilt.Y * JumpTiltDeg;
+            targetRoll = _jumpTilt.X * JumpTiltDeg;
+            leanSpeed = JumpTiltSpeed;
+        }
+        _leanRoll = Mathf.MoveToward(_leanRoll, targetRoll, leanSpeed * dt);
+        _leanPitch = Mathf.MoveToward(_leanPitch, targetPitch, leanSpeed * dt);
         if (!_rig.HasVisual)
             return;
 
@@ -423,12 +517,33 @@ public partial class PlayerController : CharacterBody3D
 
         // Landing hands the mid-air jump chain back: the counter resets on any grounded frame,
         // so a technique that buys several air jumps chains until the points run out of them,
-        // and the ground jump starts a fresh one.
+        // and the ground jump starts a fresh one. A cast still playing at touchdown is cut with
+        // it -- a step pose must not blend out over the bones after the body lands. Only the
+        // landing frame: a punch fired on the ground is a grounded cast and has to play through,
+        // not be cut every frame by the ground it was fired from.
         if (groundedNow)
         {
             _airJumpsUsed = 0;
+            if (_wasAirborne)
+                _castLayer?.Abort();
             if (Input.IsPhysicalKeyPressed(Key.Space) && !_jumpHeld)
+            {
                 _verticalVelocity = Mathf.Sqrt(JumpHeight * -2f * Gravity);
+                // The jump look is latched on the jump itself: the direction from the held
+                // input, the lead foot from the gait phase, so a jump off the leading foot
+                // continues the stride the walk cycle is actually in. Cleared on any grounded
+                // frame without a jump, so a fall off a ledge keeps the bare clip. The tilt
+                // latch rides along: it is what carries the direction the forward clip no
+                // longer shows.
+                _jumpDirection = AnimationIds.DirectionFrom(input);
+                _jumpLeadsLeft = _animator.LeadFootLeft();
+                _jumpTilt = TiltFrom(input);
+            }
+            else
+            {
+                _jumpDirection = MoveDirection.None;
+                _jumpTilt = Vector2.Zero;
+            }
         }
 
         // The technique fires on the same edge the ground jump does -- a press, not a hold.
@@ -442,6 +557,11 @@ public partial class PlayerController : CharacterBody3D
                 _verticalVelocity = Mathf.Sqrt(airJumpHeight * -2f * Gravity);
                 RedirectAirJump(input);
                 _airJumpsUsed++;
+                // The lean follows the redirect: a steered air jump swings the body toward the
+                // direction it is being swung to, and a neutral one keeps the arc's own lean.
+                if (input.LengthSquared() > 0.0001f)
+                    _jumpTilt = TiltFrom(input);
+                FireAirStepCast();
             }
         }
 
@@ -451,7 +571,13 @@ public partial class PlayerController : CharacterBody3D
         _verticalVelocity = Mathf.Max(_verticalVelocity, MaxFallSpeed);
 
         Velocity = _horizontalVelocity + _impulseVelocity + Vector3.Up * _verticalVelocity;
+        _wasAirborne = !IsOnFloor();
     }
+
+    /// The tilt direction a jump is fired in: the raw input, held to at most unit length so a
+    /// diagonal does not lean harder than a straight jump in one of its two axes.
+    private static Vector2 TiltFrom(Vector2 input)
+        => input.LengthSquared() > 1f ? input.Normalized() : input;
 
     /// Swings the horizontal velocity toward the held input on a mid-air jump, keeping its
     /// speed: a redirect of the existing arc, not a push and not a brake. No held input means
@@ -470,6 +596,120 @@ public partial class PlayerController : CharacterBody3D
         Vector3 swung = _horizontalVelocity.Lerp(direction * speed, AirJumpRedirect);
         _horizontalVelocity = swung.Normalized() * speed;
     }
+
+    /// Fires the air-step cast on a mid-air jump: the glyph's CastAnimation, always the forward
+    /// step, on the foot that leads the step. Direction is deliberately not part of the step any
+    /// more -- the strafe and diagonal variants splayed the legs sideways and the backward one
+    /// drove them behind, reading as limbs flopping rather than a jump. Like the ground jump, a
+    /// step launches once and the body tilts toward the jump direction instead (the _jumpTilt
+    /// updated on the air jump), so a steered double jump reads as a lean, not a leg splay.
+    ///
+    /// The lead foot alternates across the chain: the first air jump continues the stride the
+    /// ground jump launched, so it steps off the foot that was not leading at takeoff, and
+    /// every jump after alternates from there. A ground jump with no gait behind it (standing
+    /// still) has no stride to continue, so the chain defaults to starting on the left.
+    ///
+    /// The step is scaled to the arc it actually flies, the same machinery the jump clips use,
+    /// so one authored step covers a half-height air jump as well as a doubled one.
+    private void FireAirStepCast()
+    {
+        if (_castLayer == null || !_castLayer.Playable)
+            return;
+
+        int airJumpIndex = _airJumpsUsed;
+        bool chainLead = _jumpDirection != MoveDirection.None ? !_jumpLeadsLeft : true;
+        bool leadsLeft = airJumpIndex % 2 == 1 ? chainLead : !chainLead;
+
+        StringName key = Glyphs.GlyphCastVariant.KeyFor(MoveDirection.Forward, leadsLeft);
+        // The input is not part of the air-time prediction -- only the vertical velocity and
+        // the ground gap are -- so it is not fed here. The direction has already reached the
+        // body as the tilt swing in the air-jump block that called this.
+        var frame = new PlayerAnimator.Frame(
+            _state.Mode,
+            _horizontalVelocity.Length() + _impulseVelocity.Length(),
+            _horizontalVelocity.Length(),
+            Vector2.Zero,
+            IsOnFloor(),
+            _verticalVelocity);
+        float airTime = _animator.PredictAirTime(
+            frame, GlobalPosition.Y, GroundHeightUnderBody(), _rig.RestHeight, Gravity);
+        float clipLength = _castLayer.ClipLength(key);
+        float scale = clipLength > 0.01f && airTime > 0.05f
+            ? Mathf.Clamp(clipLength / airTime, MinJumpScale, MaxJumpScale)
+            : 1f;
+        _castLayer.Play(key, scale);
+    }
+
+    /// Reads the cast input. Kept out of SimulateGround on purpose: SimulateGround runs for the
+    /// grounded and wading modes only, and a cast fires in every mode -- the spec asks for
+    /// airborne, and swimming should not silently opt out.
+    private void UpdateCastInput()
+    {
+        bool castHeld = Input.IsMouseButtonPressed(MouseButton.Left);
+        bool pressed = castHeld && !_castHeld;
+        _castHeld = castHeld;
+        if (pressed)
+            TryFireActiveCast();
+    }
+
+    /// Fires the selected active glyph: PlayerActives.TryCast is the atomic check-pay -- out of
+    /// points, out of mana, or nothing selected means nothing happened and nothing was spent.
+    /// Nothing here names a glyph: the cast animation plays from whatever the active glyph
+    /// carries, and the payload is whatever scene it lists. A new active is a new .tres and a
+    /// payload scene, and no change here.
+    private void TryFireActiveCast()
+    {
+        if (_actives == null)
+            return;
+
+        float damage = _actives.TryCast();
+        if (damage < 0f)
+            return;
+
+        Glyphs.GlyphCastAnimation cast = _actives.Active?.CastAnimation;
+        if (_castLayer != null && _castLayer.Playable && cast != null && cast.HasAnimation)
+        {
+            StringName key = Glyphs.GlyphCastVariant.KeyFor(MoveDirection.Forward, true);
+            _castLayer.PlayFrom(cast, key, 1f);
+        }
+
+        SpawnPayload(damage);
+    }
+
+    /// Instantiates the active glyph's payload and hands it the cast: the caster, the damage
+    /// the cast paid for, and how long the cast takes (the clip's own length, or the default
+    /// when the glyph casts without an animation). The handshake is called before the payload
+    /// enters the tree, so its _Ready has the cast's numbers; the payload's own script decides
+    /// what to do with them from there, and the controller never reads back into it.
+    private void SpawnPayload(float damage)
+    {
+        PackedScene payloadScene = _actives.Active?.Payload;
+        if (payloadScene == null)
+            return;
+
+        float duration = DefaultCastDuration;
+        Glyphs.GlyphCastAnimation cast = _actives.Active?.CastAnimation;
+        if (_castLayer != null && cast != null && cast.HasAnimation)
+        {
+            float clipLength = _castLayer.ClipLengthFrom(cast,
+                Glyphs.GlyphCastVariant.KeyFor(MoveDirection.Forward, true));
+            if (clipLength > 0.01f)
+                duration = clipLength;
+        }
+
+        Node payload = payloadScene.Instantiate();
+        if (payload is Glyphs.IGlyphPayload castPayload)
+            castPayload.Cast(this, damage, duration);
+        else
+            GD.PushError($"{payloadScene.ResourcePath}: the payload does not implement " +
+                "IGlyphPayload, so the cast was not handed to it");
+        AddChild(payload);
+    }
+
+    /// The cast duration handed to a payload when the glyph has no cast animation to read one
+    /// from. The punch's spec number rather than a guess; the glyph's own clip overrides it
+    /// when there is one.
+    private const float DefaultCastDuration = 0.25f;
 
     private void SimulateSwim(Vector2 input, float dt)
     {
