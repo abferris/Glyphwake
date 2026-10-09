@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 using Glyphwake.Core;
 
@@ -257,8 +258,24 @@ public partial class PlayerController : CharacterBody3D
             clips[i] = new GraphClip(AnimationIds.ReachableClips[i]);
 
         Glyphs.GlyphCastAnimation cast = Techniques?.Technique?.CastAnimation;
-        Glyphs.GlyphCastAnimation activeCast = _actives?.Active?.CastAnimation;
-        bool withCast = (cast != null && cast.HasAnimation) || (activeCast != null && activeCast.HasAnimation);
+
+        // Every equipped active's cast is merged at build, not just the selection's: the
+        // selection is live -- a slot switch or a test override takes effect on the next cast
+        // -- so the library has to already hold an active's clips by the time its cast fires.
+        // A loadout with no catalog falls back to the override alone, the shape the tests
+        // build in code.
+        List<Glyphs.GlyphCastAnimation> activeCasts = new();
+        Glyphs.GlyphLoadout loadout = _actives?.Loadout;
+        if (loadout?.Catalog != null)
+        {
+            foreach (Glyphs.ActiveGlyphData active in loadout.Catalog.Actives)
+                if (active?.CastAnimation != null && active.CastAnimation.HasAnimation)
+                    activeCasts.Add(active.CastAnimation);
+        }
+        Glyphs.GlyphCastAnimation overrideCast = _actives?.Active?.CastAnimation;
+        if (overrideCast != null && overrideCast.HasAnimation && !activeCasts.Contains(overrideCast))
+            activeCasts.Add(overrideCast);
+        bool withCast = (cast != null && cast.HasAnimation) || activeCasts.Count > 0;
 
         _graph.Build(_rig.AnimTree, clips, AnimBlend, TreadBlend, AnimationIds.Tread,
             withCast ? LocomotionGraph.LocomotionNode : null);
@@ -268,7 +285,7 @@ public partial class PlayerController : CharacterBody3D
             _castLayer = new CastAnimationLayer(_rig.AnimTree, _rig.Anim);
             if (cast != null && cast.HasAnimation)
                 _castLayer.Build(cast);
-            if (activeCast != null && activeCast.HasAnimation)
+            foreach (Glyphs.GlyphCastAnimation activeCast in activeCasts)
                 _castLayer.BuildActive(activeCast);
         }
     }

@@ -8,12 +8,8 @@ namespace Glyphwake.Player;
 /// input, an active takes the cast input -- and keeps the same contract: one atomic check-pay
 /// call, never a piecewise read the caller could get wrong between two frames.
 ///
-/// Which active answers is data, not wiring: this asks the loadout's catalog for the first active
-/// with points in it rather than holding an export per glyph. Until the rune bar exists that is
-/// the selection rule; when it does, this is the one place that changes to "the selected slot".
-///
-/// The property stays settable for the GDScript tests, which hand it a glyph directly instead of
-/// standing up a catalog, exactly as the technique layer does.
+/// Which active answers is the loadout's selected skill, read live rather than resolved once --
+/// the selection is the loadout's state, and a slot switch is a set on it, not wiring here.
 public partial class PlayerActives : Node
 {
 	private const string LoadoutNodePath = "Loadout";
@@ -21,9 +17,14 @@ public partial class PlayerActives : Node
 
 	private ActiveGlyphData _active;
 
+	/// The active glyph the cast input fires: the loadout's selected skill, or the override.
+	/// The override is for the GDScript tests, which hand a glyph directly instead of standing
+	/// up a catalog, exactly as the technique layer does. When it is unset the selection reads
+	/// through to the loadout live, so a slot switch takes effect on the next cast without this
+	/// node knowing about slots.
 	public ActiveGlyphData Active
 	{
-		get => _active;
+		get => _active != null ? _active : Loadout?.SelectedActive;
 		set => _active = value;
 	}
 
@@ -36,21 +37,6 @@ public partial class PlayerActives : Node
 		Node body = GetParent();
 		Loadout = body?.GetNodeOrNull<GlyphLoadout>(LoadoutNodePath);
 		Resources = body?.GetNodeOrNull<PlayerResources>(ResourcesNodePath);
-
-		// Only when nothing already supplied one, so a caller that set the glyph before this node
-		// entered the tree keeps it.
-		if (_active == null && Loadout?.Catalog != null)
-			_active = FirstCastable();
-	}
-
-	/// The first active glyph the player has points in. Null when the loadout has none or has
-	/// allocated nothing to any active.
-	private ActiveGlyphData FirstCastable()
-	{
-		foreach (ActiveGlyphData glyph in Loadout.Catalog.Actives)
-			if (glyph != null && Loadout.PointsFor(glyph) > 0)
-				return glyph;
-		return null;
 	}
 
 	/// The damage the selected active deals at its points: the glyph's own Damage stat, base plus

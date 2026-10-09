@@ -16,35 +16,53 @@ namespace Glyphwake.Glyphs;
 /// <see cref="Catalog"/> on ready and then changed by <see cref="TrySetPoints"/>, and saved with
 /// the player rather than authored into a scene. The catalog is the shared list of which glyphs
 /// exist; nothing here decides that.
-[GlobalClass]
-public partial class GlyphLoadout : Node
-{
-    [Export] public GlyphCatalog Catalog;
-
-    [Export] public Array<GlyphLoadoutEntry> Entries = new();
-
-    public override void _Ready()
+    [GlobalClass]
+    public partial class GlyphLoadout : Node
     {
-        // Seed rather than assign, so an entry that is already present -- authored, or restored
-        // from a save -- is left exactly as it is. A glyph with no entry gets the catalog's
-        // starting points; a glyph the player has deliberately zeroed keeps that.
-        if (Catalog == null)
-            return;
+        [Export] public GlyphCatalog Catalog;
 
-        // The catalog's three lists reach Godot as untyped resource arrays, so a glyph in the
-        // wrong one is only detectable here. Do not seed off a catalog that failed: a wrong-typed
-        // glyph would surface as a failed cast inside a consumer, with no clue which entry caused
-        // it.
-        if (!Catalog.Validate())
+        [Export] public Array<GlyphLoadoutEntry> Entries = new();
+
+        /// The player's selected skill: the slot the cast input fires. Player-owned runtime state
+        /// like the entries -- the default is the catalog's first active (slot 1 of the bar) until
+        /// a key or the rune setup menu changes it, and a switch sets it here so everything that
+        /// reads the selection reads one place.
+        [Export] public ActiveGlyphData SelectedActive;
+
+        public override void _Ready()
         {
-            GD.PushError($"{GetPath()}: the glyph catalog is malformed, so the loadout was not seeded");
-            return;
-        }
+            // Seed rather than assign, so an entry that is already present -- authored, or restored
+            // from a save -- is left exactly as it is. A glyph with no entry gets the catalog's
+            // starting points; a glyph the player has deliberately zeroed keeps that.
+            if (Catalog == null)
+                return;
 
-        foreach (GlyphData glyph in Catalog.AllGlyphs())
-            if (glyph != null && !HasEntry(glyph))
-                TrySetPoints(glyph, Catalog.DefaultSeedPoints);
-    }
+            // The catalog's three lists reach Godot as untyped resource arrays, so a glyph in the
+            // wrong one is only detectable here. Do not seed off a catalog that failed: a wrong-typed
+            // glyph would surface as a failed cast inside a consumer, with no clue which entry caused
+            // it.
+            if (!Catalog.Validate())
+            {
+                GD.PushError($"{GetPath()}: the glyph catalog is malformed, so the loadout was not seeded");
+                return;
+            }
+
+            foreach (GlyphData glyph in Catalog.AllGlyphs())
+                if (glyph != null && !HasEntry(glyph))
+                    TrySetPoints(glyph, Catalog.DefaultSeedPoints);
+
+            // The default selection is the catalog's first active -- slot 1. Only when nothing
+            // already selected one, so a restored save or a caller that set it first keeps it.
+            if (SelectedActive == null)
+            {
+                foreach (ActiveGlyphData glyph in Catalog.Actives)
+                    if (glyph != null)
+                    {
+                        SelectedActive = glyph;
+                        break;
+                    }
+            }
+        }
 
     /// Whether this loadout has an entry for the glyph at all, which is not the same question as
     /// how many points it has: a legal zero-point allocation stores an entry (see

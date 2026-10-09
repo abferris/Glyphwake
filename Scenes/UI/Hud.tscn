@@ -1,0 +1,37 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://Scripts/UI/AimReticle.cs" id="1_reticle"]
+[ext_resource type="Script" path="res://Scripts/UI/GlyphDial.cs" id="2_dial"]
+[ext_resource type="Script" path="res://Scripts/UI/GlyphHotkeyToolbar.cs" id="3_hotbar"]
+[ext_resource type="Resource" path="res://Resources/Glyphs/Actives/TerraStrike.tres" id="5_terra"]
+[ext_resource type="Resource" path="res://Resources/Glyphs/Actives/CinderShot.tres" id="6_cinder"]
+
+[node name="Hud" type="CanvasLayer"]
+
+[node name="AimReticle" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_reticle")
+
+[node name="GlyphDial" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_dial")
+
+[node name="GlyphHotkeyToolbar" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("3_hotbar")
+Glyphs = [ExtResource("5_terra"), ExtResource("6_cinder")]
