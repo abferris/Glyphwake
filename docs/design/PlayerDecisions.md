@@ -72,7 +72,7 @@ table, and the AnimationTree is a state machine **built in code**. This replaces
 - **The graph is not editable in the AnimationTree dock.** That is the real cost of generating it.
   The payoff is the next step: replace 16 of these states with two blend spaces, which deletes most
   of those transitions instead of maintaining them.
-- **The clip list can drift from the generated library.** `tools/test_animation_clips.gd` compares
+- **The clip list can drift from the generated library.** `tests/test_animation_clips.gd` compares
   the built graph against the real library, and `LocomotionGraph.MissingClips` reports drift once up
   front instead of one raw engine error per bad name.
 
@@ -88,7 +88,7 @@ attachment work left open:
   player, and a `AnimationNodeOneShot` in the tree runs the clip once, fades in and out, and hands
   back. The one-shot's **filters** decide which tracks the cast overrides — set from the clip's own
   track list at cast time — so locomotion keeps playing underneath on every other bone. One writer,
-  per-bone takeover, no ordering assumption. Pinned by `tools/test_air_jump_animation.gd`, which
+  per-bone takeover, no ordering assumption. Pinned by `tests/test_air_jump_animation.gd`, which
   asserts the locomotion state stays `Jumping Up` while a step is playing.
 - **An `AnimationNodeAnimation`'s clip cannot be switched through a parameter.** In Godot 4.7 the
   `animation` property is not a tree parameter, so a `parameters/<node>/animation` set is silently
@@ -174,7 +174,7 @@ attachment work left open:
 - **`AirJumpRedirect` is 0.5** (a 45° swing through a right angle). It was retuned to 0.3 for the
   step-jump pass and reverted the same day at the user's request — the redirect capability stays,
   and the number lives in one obvious place on the body
-  (`PlayerController.AirJumpRedirect`, with a marker comment). `tools/test_double_jump.gd`
+  (`PlayerController.AirJumpRedirect`, with a marker comment). `tests/test_double_jump.gd`
   reads the expected turn off the body rather than hardcoding it, so the next retune cannot stale
   the test.
 - **One step is scaled to the arc it actually flies**, the same `PredictAirTime` machinery the jump

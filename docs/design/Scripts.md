@@ -112,7 +112,7 @@ the mechanism read separately.
 `AnimationPlayer` library, and each state is named after its clip. Drop the whole thing into a
 project with different clip names and the graph still builds — `AddNode` creates a state whatever
 it is called — but the states play nothing. `LocomotionGraph.MissingClips` reports that once up
-front, and `tools/test_animation_clips.gd` fails on it, so run that test after swapping clips.
+front, and `tests/test_animation_clips.gd` fails on it, so run that test after swapping clips.
 
 The graph is generated rather than authored (16 states, every state reaching every other), which
 means it is **not editable in the AnimationTree dock**. Per-state playback speed is an
@@ -132,7 +132,7 @@ Two things to know before reusing it:
   player with `GetOverlappingBodies()`, which matches the zone's mask against the capsule's
   layer. They sit in two different scene files (`Player.tscn`, `World.tscn`), so changing one and
   missing the other turns water entry off with no error anywhere — it presents as a locomotion
-  regression, not a config mistake. `tools/test_collision_layers.gd` asserts the pairing at
+  regression, not a config mistake. `tests/test_collision_layers.gd` asserts the pairing at
   runtime.
 - **The player masks `World` only.** Derived combat hitboxes (layer 3) must not block movement.
   A future skillshot that forgets to opt into a layer hits terrain rather than players, which is
@@ -214,7 +214,7 @@ C# uses `MoveAndSlide()`), `Rigidbody` (C# uses `CharacterBody3D`).
 | `Scripts/Player/Cameras/CameraController.cs` | C# | ✅ usable | `Camera3D` head-anchored mouse look; reads controller swim/wade state |
 | `Scripts/World/WaterZone.cs` | C# | ✅ usable | `Area3D` trigger, `WaterSurfaceY = 80`; Enter/Exit water API |
 | `Scripts/Glyphs/**` (Framework + Active/Passive/Technique) | C# | ✅ usable | Pure `Resource` data model (not ScriptableObject); `GlyphCatalog.tres` lists them so scenes don't — reusable |
-| `tools/*.gd` (build/import/probe/test) | GDScript | ✅ usable | Godot 4 GDScript, `CharacterBody3D`/`Area3D` refs, `Tools >` menus only |
+| `tools/*.gd` (build/import/probe) + `tests/*.gd` (test suite) | GDScript | ✅ usable | Godot 4 GDScript, `CharacterBody3D`/`Area3D` refs, `Tools >` menus only |
 | `demo/src/*.gd` + `demo/components/*.tscn` | GDScript | ✅ usable* | Terrain3D learning demo — *learning scratch, not the shipped runtime* |
 
 Legend: ✅ = verified against disk, Godot-valid. `*` = demo is the Terrain3D learning

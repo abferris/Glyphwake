@@ -4,4 +4,4 @@
 
 # Probe and test output
 tools/tmp_shots/
-tmp_godot.log
+logs/

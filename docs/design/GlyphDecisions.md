@@ -506,7 +506,7 @@ Where the code deliberately differs from this document, and why.
   grouping legible, but they do **not** give an editor-side type filter. `GlyphCatalog.Validate`
   is the substitute: it reports any glyph that is not in the list its own subclass belongs to, and
   `GlyphLoadout` refuses to seed off a catalog that fails it. Pinned by
-  `tools/test_glyph_catalog.gd`, which will report the day a Godot upgrade changes it.
+  `tests/test_glyph_catalog.gd`, which will report the day a Godot upgrade changes it.
 - **`GlyphCatalog.tres` is generated, not hand-written**, by `tools/build_catalog.gd` through
   `ResourceSaver`. A hand-written catalog would be guessing the serialized form of the typed
   arrays, which is the exact failure mode the previous bullet describes. Re-run that script after
@@ -516,7 +516,7 @@ Where the code deliberately differs from this document, and why.
   existing input — so `PlayerTechniques` asks the catalog for "the Airborne technique" and the
   catalog decides which `.tres` answers. Wall jump, air dash, waterbreathing and spiderclimb each
   ride a different trigger, so each is a catalog entry and no change in code or scene. The
-  property stays settable because `tools/test_glyph_loadout.gd` hands it a glyph directly instead
+  property stays settable because `tests/test_glyph_loadout.gd` hands it a glyph directly instead
   of standing up a catalog.
 - **The loadout seeds itself; the scene no longer authors an allocation.** `Entries` is
   player-owned runtime state and was serialized into `Player.tscn` as a 5-point sub_resource.
@@ -556,7 +556,7 @@ Where the code deliberately differs from this document, and why.
   `CastAnimation`, `CastMode` and `CastTime` all had zero consumers — the cast pipeline below is
   still unbuilt, so these are attachment points with tests, not working features. `CastAnimation`
   has since got its playback (session 5, below); the rest still wait on the cast pipeline. Pinned by
-  `tools/test_glyph_payloads.gd`, which round-trips all three through a real save and load and
+  `tests/test_glyph_payloads.gd`, which round-trips all three through a real save and load and
   checks `GlyphCastAnimation.Validate` catches a clip name the scene does not hold and a scene
   with no `AnimationPlayer` — the two mistakes the editor cannot catch, since `Scene` accepts any
   scene. Same failure shape `LocomotionGraph.MissingClips` reports for a renamed locomotion clip.

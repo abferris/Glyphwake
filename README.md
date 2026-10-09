@@ -65,7 +65,7 @@ suitable water depth or dry ground first.
 Run one from the command line:
 
 ```
-godot --headless --path /path/to/Glyphwake --script res://tools/test_wade.gd
+godot --headless --path /path/to/Glyphwake --script res://tests/test_wade.gd
 ```
 
 Use the `*_console.exe` binary, or the `print` output goes nowhere and the script appears to
@@ -122,11 +122,14 @@ Scripts/    C# — Player, World, Glyphs, Core
 Shaders/    water_from_above / water_from_below .gdshader
 Assets/     Terrain3D island data, heightmaps, layer textures
 addons/     terrain_3d, including the native binaries
-tools/      headless test scripts and rig-building tools
+tools/      headless authoring/import scripts and the test harness
+tests/      the headless test suite (test_*.gd)
 demo/       GDScript learning demo
 docs/       design decisions and worklogs
 ```
 
-Note that `tools/` is a mix: `test_*.gd` are the real suite, `audit_*.gd` are one-off
-inspection scripts with no assertions that nothing imports, and `build_stickman.gd` regenerates
-`Scenes/Stickman.tscn`.
+Note that `tools/` is a mix: `audit_*.gd` are one-off inspection scripts with no assertions
+that nothing imports, `probe_*.gd` render measurements and write to `logs/`, and
+`build_stickman.gd` regenerates `Scenes/Stickman.tscn`. The real suite lives in `tests/`, with
+`tools/run_tests.sh` as its harness. Captured Godot runs go in `logs/`, one subdirectory per
+kind (`logs/console/`, `logs/import/`, `logs/probe/`).

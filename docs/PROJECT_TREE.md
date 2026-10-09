@@ -133,15 +133,7 @@ Glyphwake/
 │   ├── build_catalog.gd             # Regenerate Resources/Glyphs/GlyphCatalog.tres (via ResourceSaver)
 │   ├── fix_refs.sh                  # Rewrite stale res:// refs after an on-disk file move
 │   ├── import_control.gd            # Import controller setup
-│   ├── run_tests.sh                  # Runs every test_*.gd headless, one line per test
-│   ├── test_*.gd                    # test_collision_layers / test_collision / test_spawn /
-│   │                                #   test_swim / test_wade / test_plunge / test_view /
-│   │                                #   test_underwater_look / test_underwater_filter /
-│   │                                #   test_glyph_loadout / test_glyph_catalog /
-│   │                                #   test_glyph_payloads /
-│   │                                #   test_animation_clips / test_double_jump /
-│   │                                #   test_air_jump_animation (the cast: variants, merge,
-│   │                                #   layering, alternation, handback) / ...
+│   ├── run_tests.sh                  # Runs every tests/test_*.gd headless, one line per test
 │   ├── sample_control.gd
 │   ├── audit_*.gd                   # audit_feet / audit_heights / audit_phase /
 │   │                                #   audit_states / audit_stop
@@ -156,6 +148,17 @@ Glyphwake/
 │                                    #   probe_walk_phase (the walk and run cycles' foot
 │                                    #   positions, the gait phase's measurement) /
 │                                    #   probe_cast_animation (the cast's one-shot state)
+│
+├── 🧪 tests/                        # the headless test suite (the "real" assertions)
+│   └── test_*.gd                    # test_collision_layers / test_collision / test_spawn /
+│                                    #   test_swim / test_wade / test_plunge / test_view /
+│                                    #   test_underwater_look / test_underwater_filter /
+│                                    #   test_glyph_loadout / test_glyph_catalog /
+│                                    #   test_glyph_payloads /
+│                                    #   test_animation_clips / test_double_jump /
+│                                    #   test_air_jump_animation (the cast: variants, merge,
+│                                    #   layering, alternation, handback) / ... (each ships
+│                                    #   a per-file .gd.uid sidecar raised alongside it)
 │
 └── 📚 docs/                         # This documentation set (see docs/README.md)
 ```
@@ -186,7 +189,7 @@ Glyphwake/
   above water. Do not rebase the density onto the world's value — that puts a blue haze over the
   whole above-water look. `UnderwaterFogNear`/`UnderwaterFogDeep` (0.9/2.2) are instead set high
   enough for the haze to carry the tint by itself, which it has to do when looking forward and
-  down, because the ceiling is edge on there and contributes nothing. `test_underwater_filter.gd`
+  down, because the ceiling is edge on there and contributes nothing. `tests/test_underwater_filter.gd`
   guards all of it, along with the swim lift that holds the eye clear of the water while treading,
   which used to teleport the eye down through the surface in one frame whenever the view was pitched
   down far enough to dive.

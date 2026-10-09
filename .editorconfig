@@ -12,7 +12,7 @@ trim_trailing_whitespace = true
 
 # Probe and test output
 tools/tmp_shots/
-tmp_godot.log
+logs/
 tmp_glyphwake_*.log
 
 [*.cs]

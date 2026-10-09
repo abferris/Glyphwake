@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs every tools/test_*.gd headless and prints one line per test.
+# Runs every tests/test_*.gd headless and prints one line per test.
 #
 #   OK      test ran to completion and printed "TEST <NAME> OK"
 #   FAIL    test ran to completion and printed "TEST <NAME> FAILED" or a "FAIL:" line
@@ -16,7 +16,7 @@ cd /mnt/c/Projects/Glyphwake || exit 1
 filter="${1:-}"
 pass=0; fail=0; crash=0; silent=0
 
-for t in tools/test_*.gd; do
+for t in tests/test_*.gd; do
     name=$(basename "$t" .gd)
     [ -n "$filter" ] && case "$name" in *"$filter"*) ;; *) continue ;; esac
 
