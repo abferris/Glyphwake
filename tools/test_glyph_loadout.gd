@@ -9,8 +9,10 @@ extends SceneTree
 ##   - the height curve: each air jump starts at half the normal jump and caps at twice it
 ##     over its decade, so further points unlock new jumps rather than growing old ones
 ##   - TryAirJump is atomic: nothing fired means nothing spent, an out-of-budget or
-##     insufficient-mana attempt refuses, and a free jump (cost 0 at 21+ points) goes
-##     through at any mana
+##     insufficient-stamina attempt refuses, and a free jump (cost 0 at 21+ points) goes
+##     through at any stamina
+##   - the cost is the glyph's own declaration: the double jump declares stamina, so its
+##     spend leaves the stamina pool and never the mana one
 
 const TOL := 0.01
 const GLYPH_PATH := "res://Resources/Glyphs/Techniques/DoubleJump.tres"
@@ -76,32 +78,36 @@ func _physics_process(_delta: float) -> bool:
 		check_counts()
 		check_heights()
 		# One point is activation; with it the first air jump is half the normal jump and
-		# costs the base mana. Full pools refill the mana to 100 first, so the spend is exact.
+		# costs the base stamina. Full pools refill both to their max first, so the spend is
+		# exact -- and mana, which nothing should touch, stays full.
 		expect(loadout.TrySetPoints(glyph, 1), "allocating 1 point should fit the empty pool")
+		expect(int(glyph.Costs[0].Resource) == 2,
+			"the double jump must declare CostResource.Stamina (2), got %s" % glyph.Costs[0].Resource)
 		var h: float = techniques.TryAirJump(0, NORMAL_JUMP)
 		expect(h > 0.0, "one air jump should fire at 1 point")
 		expect(close(h, 0.75), "first air jump at 1 point should be half the normal jump, got %f" % h)
-		expect(close(resources.Mana, 90.0), "mana should drop by the base cost 10, got %f" % resources.Mana)
+		expect(close(resources.Stamina, 90.0), "stamina should drop by the base cost 10, got %f" % resources.Stamina)
+		expect(close(resources.Mana, 100.0), "the air jump must not touch mana, got %f" % resources.Mana)
 		# Out of jumps: the count is 1, so anything past the first refuses and nothing is spent.
 		expect(techniques.TryAirJump(1, NORMAL_JUMP) < 0.0, "second air jump must refuse at 1 point")
 		expect(techniques.TryAirJump(2, NORMAL_JUMP) < 0.0, "third air jump must refuse at 1 point")
-		expect(close(resources.Mana, 90.0), "a refused air jump must not spend, got %f" % resources.Mana)
-		# Starve the pool: MaxMana 5 clamps the current value down on the next tick.
-		resources.MaxMana = 5.0
+		expect(close(resources.Stamina, 90.0), "a refused air jump must not spend, got %f" % resources.Stamina)
+		# Starve the pool: MaxStamina 5 clamps the current value down on the next tick.
+		resources.MaxStamina = 5.0
 		phase = 1
 		return false
 
 	if phase == 1:
-		expect(close(resources.Mana, 5.0), "mana should clamp to the retuned max 5, got %f" % resources.Mana)
-		expect(not resources.TrySpend(0, 10.0), "TrySpend must refuse a cost the pool cannot pay")
-		expect(techniques.TryAirJump(0, NORMAL_JUMP) < 0.0, "air jump must refuse when mana cannot pay")
-		# At 21 points the cost has fallen to 0, so the jump is free at any mana -- and the
+		expect(close(resources.Stamina, 5.0), "stamina should clamp to the retuned max 5, got %f" % resources.Stamina)
+		expect(not resources.TrySpend(2, 10.0), "TrySpend must refuse a cost the pool cannot pay")
+		expect(techniques.TryAirJump(0, NORMAL_JUMP) < 0.0, "air jump must refuse when stamina cannot pay")
+		# At 21 points the cost has fallen to 0, so the jump is free at any stamina -- and the
 		# first air jump's decade is done, so its height has capped at twice the normal jump.
 		expect(loadout.TrySetPoints(glyph, 21), "reallocating 21 points should fit")
 		var h: float = techniques.TryAirJump(0, NORMAL_JUMP)
-		expect(h > 0.0, "a free jump should fire at any mana")
+		expect(h > 0.0, "a free jump should fire at any stamina")
 		expect(close(h, 3.0), "first air jump at 21 points should have capped at twice the normal jump, got %f" % h)
-		expect(close(resources.Mana, 5.0), "a zero-cost jump must not spend, got %f" % resources.Mana)
+		expect(close(resources.Stamina, 5.0), "a zero-cost jump must not spend, got %f" % resources.Stamina)
 		verdict()
 		return true
 
