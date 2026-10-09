@@ -1,7 +1,7 @@
 extends SceneTree
 
 ## Probe: the redirect sequence — grounded run holding W, ground jump, mid-air switch to D
-## with a Space tap. Prints (phase, tick, vy, hs, mode, mana) per tick.
+## with a Space tap. Prints (phase, tick, vy, hs, mode, stamina) per tick.
 
 var world: Node3D
 var player: CharacterBody3D
@@ -81,8 +81,8 @@ func _physics_process(_delta: float) -> bool:
 	if phase == 3:
 		if t >= 2:
 			press(KEY_SPACE, false)
-		print("rise   t=%d vy=%.3f hs=%.3f mode=%d mana=%.2f" %
-			[t, player.velocity.y, hs, int(player.Mode), player.get_node("Resources").Mana])
+		print("rise   t=%d vy=%.3f hs=%.3f mode=%d stamina=%.2f" %
+			[t, player.velocity.y, hs, int(player.Mode), player.get_node("Resources").Stamina])
 		if player.velocity.y < -1.5:
 			press(KEY_W, false)
 			press(KEY_D, true)
@@ -94,8 +94,8 @@ func _physics_process(_delta: float) -> bool:
 	if phase == 4:
 		if t >= 2:
 			press(KEY_SPACE, false)
-		print("airtap t=%d vy=%.3f hs=%.3f mode=%d mana=%.2f" %
-			[t, player.velocity.y, hs, int(player.Mode), player.get_node("Resources").Mana])
+		print("airtap t=%d vy=%.3f hs=%.3f mode=%d stamina=%.2f" %
+			[t, player.velocity.y, hs, int(player.Mode), player.get_node("Resources").Stamina])
 		if t >= 30:
 			quit(0)
 		return false
