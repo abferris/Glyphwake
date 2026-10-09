@@ -30,6 +30,6 @@ func _physics_process(_delta: float) -> bool:
 			print("  Loadout.Entries: ", l.Entries.size(), " PointsFor: ", l.PointsFor(tn.Technique))
 		var r: Node = tn.Resources
 		if r != null:
-			print("  Resources.Mana: ", r.Mana)
+			print("  Resources.Mana: ", r.Mana, " Stamina: ", r.Stamina)
 	quit(0)
 	return true

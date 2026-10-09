@@ -148,8 +148,8 @@ func _physics_process(_delta: float) -> bool:
 		for v in variants:
 			expect(merged.has("cast/" + v.Clip),
 				"the merged library has no 'cast/%s'; the playback layer did not merge it" % v.Clip)
-		expect(player.CastClipNames.size() == 8,
-			"the player merged %d cast clips, expected 8" % player.CastClipNames.size())
+		expect(player.CastClipNames.size() == 11,
+			"the player merged %d cast clips, expected 11 (the 8 air steps + the punch + its mirror + Cinder Shot's cast)" % player.CastClipNames.size())
 
 		var tree: AnimationTree = player.get_node("AnimTree")
 		var wrapped := tree.tree_root as AnimationNodeBlendTree
@@ -161,6 +161,13 @@ func _physics_process(_delta: float) -> bool:
 	# --- points to the full pool, then the ground jump on dry land ---
 	if phase == 2:
 		var loadout: Node = player.get_node("Loadout")
+		# The pool is shared: the seeding gave the other glyphs points too, so they are zeroed
+		# first -- sinking the whole pool into one technique is legal only with the rest at 0.
+		# A technique must always be usable: its activation is its own trigger (Space here),
+		# never the mouse, so the selected skill in the bar never gates this.
+		for entry in loadout.Entries:
+			if entry.Glyph != null and entry.Glyph != glyph:
+				loadout.TrySetPoints(entry.Glyph, 0)
 		loadout.TrySetPoints(glyph, 100)
 		player.global_position = find_ground() + Vector3(0, 0.5, 0)
 		player.velocity = Vector3.ZERO

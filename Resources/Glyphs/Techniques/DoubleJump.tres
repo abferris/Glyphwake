@@ -63,8 +63,9 @@ Variants = Array[ExtResource("6_variant")]([SubResource("GlyphCastVariant_forwar
 BlendIn = 0.15
 BlendOut = 0.2
 
-[sub_resource type="Resource" id="GlyphCost_mana"]
+[sub_resource type="Resource" id="GlyphCost_stamina"]
 script = ExtResource("2_cost")
+Resource = 2
 Amount = 10.0
 AmountPerPoint = -0.5
 
@@ -77,9 +78,9 @@ StepSize = 10.0
 
 [resource]
 script = ExtResource("1_technique")
-Costs = Array[ExtResource("2_cost")]([SubResource("GlyphCost_mana")])
+Costs = Array[ExtResource("2_cost")]([SubResource("GlyphCost_stamina")])
 DisplayName = "Double Jump"
-Description = "Press jump again while airborne to jump a second time, steering your arc slightly toward the held direction. Points buy more mid-air jumps -- one every 10 points, each starting at half a normal jump's height and reaching twice it over its decade -- and spend less mana. The chain resets when you land."
+Description = "Press jump again while airborne to jump a second time, steering your arc slightly toward the held direction. Points buy more mid-air jumps -- one every 10 points, each starting at half a normal jump's height and reaching twice it over its decade -- and spend less stamina. The chain resets when you land."
 Icon = ExtResource("6_n0lv8")
 CastAnimation = SubResource("GlyphCastAnimation_airstep")
 BaseStats = Array[ExtResource("3_statvalue")]([SubResource("StatValue_jumpcount")])

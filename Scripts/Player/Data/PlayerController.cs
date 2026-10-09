@@ -547,8 +547,9 @@ public partial class PlayerController : CharacterBody3D
         }
 
         // The technique fires on the same edge the ground jump does -- a press, not a hold.
-        // TryAirJump is the atomic check-pay-compute: out of jumps or out of mana means
-        // nothing happens and nothing was spent.
+        // TryAirJump is the atomic check-pay-compute: out of jumps or out of the pool the
+        // glyph's cost declares (stamina for the double jump) means nothing happens and
+        // nothing was spent.
         if (!groundedNow && Input.IsPhysicalKeyPressed(Key.Space) && !_jumpHeld && Techniques != null)
         {
             float airJumpHeight = Techniques.TryAirJump(_airJumpsUsed, JumpHeight);

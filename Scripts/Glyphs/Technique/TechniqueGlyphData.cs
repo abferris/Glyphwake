@@ -4,11 +4,12 @@ using Godot.Collections;
 namespace Glyphwake.Glyphs;
 
 /// The condition the caster's state must satisfy for a technique to fire. A technique is not
-/// bound to a hotkey and is not aimed: it rides an existing input, so what varies between
-/// techniques is the trigger, not the target.
+/// bound to a numerical hotkey. They can be aimed, and will be triggered by other bound keys
+/// and possibly situations. EX: wall jump must be in contact with a wall. Double jump must be
+/// airborne to trigger
 public enum TechniqueTrigger
 {
-    /// Cast while airborne. Double jump, air dash.
+    /// Cast while airborne. Double jump.
     Airborne,
 
     /// Cast while against a wall. Wall jump.
@@ -23,15 +24,16 @@ public enum TechniqueTrigger
 
 /// A technique glyph: a capability rather than a castable skill. It does not occupy a hotbar
 /// slot and adds functionality that did not exist before, which is what separates it from an
-/// active on one side and a passive on the other. When points are in it, it is on.
+/// active on one side and a passive on the other. When points are in it, it works.
 [GlobalClass]
 public partial class TechniqueGlyphData : GlyphData
 {
     [Export] public TechniqueTrigger Trigger;
 
-    /// What the technique spends. The resource is the glyph's call: double jump pays mana
-    /// (decided 10-02, more points spend less), air dash may pay stamina, and a held resource
-    /// is what waterbreathing and spiderclimb drain.
+    /// What the technique spends. The resource is the glyph's call and the payer reads it off
+    /// the entry rather than assuming one: the double jump pays stamina (moved off mana
+    /// 10-07, more points spend less), air dash may too, and a held resource is what
+    /// waterbreathing and spiderclimb drain.
     [Export] public Array<GlyphCost> Costs = new();
 
     /// Spends per second while the capability is held, such as climbing. Paid by a cost entry's

@@ -86,9 +86,20 @@ public partial class PlayerTechniques : Node
 		if (airJumpsUsed >= AirJumpCountAt(points))
 			return -1f;
 
-		float cost = Technique.CostUpFrontAt(CostResource.Mana, points);
-		if (!Resources.TrySpend(CostResource.Mana, cost))
-			return -1f;
+		// The cost is the glyph's call, not this layer's: every entry pays out of the resource
+		// it declares, so the double jump's stamina entry pays stamina and the next technique
+		// can declare its own. All entries are checked before any is paid, so a refusal spends
+		// nothing and the call stays atomic across a mixed set of costs.
+		foreach (GlyphCost cost in Technique.Costs)
+		{
+			if (cost != null && !Resources.CanSpend(cost.Resource, cost.AmountAt(points)))
+				return -1f;
+		}
+		foreach (GlyphCost cost in Technique.Costs)
+		{
+			if (cost != null)
+				Resources.TrySpend(cost.Resource, cost.AmountAt(points));
+		}
 
 		return AirJumpHeightAt(airJumpsUsed + 1, points, normalJumpHeight);
 	}

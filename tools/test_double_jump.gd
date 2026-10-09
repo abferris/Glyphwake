@@ -9,7 +9,8 @@ extends SceneTree
 ##
 ##   1. a mid-air Space tap produces a second upward spike at the air-jump height, not the
 ##      ground-jump height
-##   2. the mana dropped by the glyph's cost at the loadout's points
+##   2. the stamina dropped by the glyph's cost at the loadout's points -- the glyph declares
+##      stamina, so the spend leaves that pool
 ##   3. a third tap does nothing while the points only buy one air jump
 ##   4. landing hands the chain back: after touching down the air jump works again
 ##   5. zero points refuse the air jump but not the ground jump
@@ -21,6 +22,7 @@ const TOL := 0.01
 const FALL_VY := -1.5   # past the apex of either jump, still well above landing
 const WARM_TICKS := 8   # is_on_floor() survives the teleport otherwise
 const SPIKE_GUARD := 0.35  # gravity a tick or two of descent is allowed to have taken
+const REGEN_SLACK := 0.75  # the ticks between the read and the check, at 10 stamina/second
 
 var phase := 0
 var tick := 0
@@ -39,7 +41,7 @@ var per_point := 0.0
 
 var max_vy := 0.0
 var seen_spike := false
-var mana_before := 0.0
+var stamina_before := 0.0
 var hv_pre := Vector2.ZERO
 
 var held := {}
@@ -149,7 +151,7 @@ func _physics_process(_delta: float) -> bool:
 	if phase == 3:
 		if player.velocity.y > FALL_VY:
 			return false
-		mana_before = resources().Mana
+		stamina_before = resources().Stamina
 		tap(KEY_SPACE)
 		next_phase()
 		return false
@@ -159,10 +161,10 @@ func _physics_process(_delta: float) -> bool:
 		if player.velocity.y > 3.0:
 			seen_spike = true
 		if t == 2:
-			var dropped: float = mana_before - resources().Mana
+			var dropped: float = stamina_before - resources().Stamina
 			var cost := cost_at()
-			if dropped < cost - 0.5 or dropped > cost + 0.05:
-				fail("the air jump spent %f mana, expected the glyph's cost %f (regen aside)" % [dropped, cost])
+			if dropped < cost - REGEN_SLACK or dropped > cost + 0.05:
+				fail("the air jump spent %f stamina, expected the glyph's cost %f (regen aside)" % [dropped, cost])
 		if not seen_spike or player.velocity.y >= 0.0:
 			if t > 200:
 				fail("the air jump never spiked or never came down")
@@ -218,7 +220,7 @@ func _physics_process(_delta: float) -> bool:
 	if phase == 9:
 		if player.velocity.y > FALL_VY:
 			return false
-		mana_before = resources().Mana
+		stamina_before = resources().Stamina
 		tap(KEY_SPACE)
 		next_phase()
 		return false
@@ -228,7 +230,7 @@ func _physics_process(_delta: float) -> bool:
 		if player.velocity.y > 3.0:
 			seen_spike = true
 		if t == 2:
-			if mana_before - resources().Mana < cost_at() - 0.5:
+			if stamina_before - resources().Stamina < cost_at() - REGEN_SLACK:
 				fail("the air jump after landing spent less than its cost")
 		if not seen_spike or player.velocity.y >= 0.0:
 			if t > 200:
