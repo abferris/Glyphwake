@@ -132,6 +132,12 @@ public static class AnimationIds
     public static string JumpClipFor(bool leadsLeft)
         => leadsLeft ? JumpForwardL : JumpForwardR;
 
+    /// Whether a state is one of the ground-jump clips: the bare jump (standing jumps and
+    /// ledge falls) or a lead-foot variant. The jump clips tuck the spine, and the runtime
+    /// head level keys off this so the head stays upright while the body coils underneath.
+    public static bool IsJumpClip(string state)
+        => state == Jump || state == JumpForwardL || state == JumpForwardR;
+
     /// Every clip this character can end up playing, in the order the graph lays them out.
     ///
     /// This is the list the AnimationTree is built from, so it is deliberately the *reachable*

@@ -1,10 +1,11 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://Scripts/Player/Data/PlayerController.cs" id="1_player"]
 [ext_resource type="Script" path="res://Scripts/Player/Cameras/CameraController.cs" id="2_camera"]
 [ext_resource type="PackedScene" path="res://Scenes/Stickman.tscn" id="3_visual"]
 [ext_resource type="Script" path="res://Scripts/Player/Cameras/DebugChaseCamera.cs" id="4_debug"]
 [ext_resource type="Script" path="res://Scripts/Player/Animation/Movement/SurfaceSwimPose.cs" id="5_pose"]
+[ext_resource type="Script" path="res://Scripts/Player/Animation/Movement/AirbornePose.cs" id="13_airpose"]
 [ext_resource type="Script" path="res://Scripts/Glyphs/Framework/GlyphLoadout.cs" id="7_loadout"]
 [ext_resource type="Script" path="res://Scripts/Player/Data/PlayerResources.cs" id="8_resources"]
 [ext_resource type="Script" path="res://Scripts/Player/Data/PlayerTechniques.cs" id="9_techniques"]
@@ -77,5 +78,9 @@ script = ExtResource("4_debug")
 ; ===== SURFACE SWIM POSE — levels the head and holds both hands just below the waterline (ArmSubmersion) while swimming at the surface =====
 [node name="SurfaceSwimPose" type="SkeletonModifier3D" parent="Visual/Skeleton3D"]
 script = ExtResource("5_pose")
+
+; ===== AIRBORNE POSE — keeps the head upright while a jump clip plays (the clips tuck the spine; see AirbornePose.cs) =====
+[node name="AirbornePose" type="SkeletonModifier3D" parent="Visual/Skeleton3D"]
+script = ExtResource("13_airpose")
 
 [node name="Hud" parent="." instance=ExtResource("11_hud")]
