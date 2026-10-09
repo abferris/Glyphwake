@@ -15,6 +15,7 @@ extends SceneTree
 const CATALOG_PATH := "res://Resources/Glyphs/GlyphCatalog.tres"
 const DOUBLE_JUMP_PATH := "res://Resources/Glyphs/Techniques/DoubleJump.tres"
 const TERRA_STRIKE_PATH := "res://Resources/Glyphs/Actives/TerraStrike.tres"
+const CINDER_SHOT_PATH := "res://Resources/Glyphs/Actives/CinderShot.tres"
 const LOADOUT_SCRIPT := "res://Scripts/Glyphs/Framework/GlyphLoadout.cs"
 
 var phase := 0
@@ -23,6 +24,7 @@ var failed := false
 var catalog: Resource
 var glyph: Resource
 var terra_strike: Resource
+var cinder_shot: Resource
 var seeded: Node
 var bare: Node
 
@@ -45,8 +47,13 @@ func _initialize() -> void:
 		return
 	glyph = load(DOUBLE_JUMP_PATH)
 	terra_strike = load(TERRA_STRIKE_PATH)
+	cinder_shot = load(CINDER_SHOT_PATH)
 	if terra_strike == null:
 		printerr("FAIL: ", TERRA_STRIKE_PATH, " did not load")
+		quit(1)
+		return
+	if cinder_shot == null:
+		printerr("FAIL: ", CINDER_SHOT_PATH, " did not load")
 		quit(1)
 		return
 
@@ -102,10 +109,11 @@ func check_loads() -> void:
 	expect(catalog.Actives != null, "the catalog should expose an Actives array")
 	expect(catalog.Passives != null, "the catalog should expose a Passives array")
 	expect(catalog.Techniques.size() == 1, "the catalog should hold the one authored technique, got %d" % catalog.Techniques.size())
-	expect(catalog.Actives.size() == 1, "the catalog should hold the one authored active, got %d" % catalog.Actives.size())
+	expect(catalog.Actives.size() == 2, "the catalog should hold the two authored actives, got %d" % catalog.Actives.size())
 	expect(catalog.Passives.is_empty(), "no passives are authored yet")
 	expect(catalog.Techniques[0] == glyph, "the catalog should hold the DoubleJump resource itself, not a copy")
 	expect(catalog.Actives[0] == terra_strike, "the catalog should hold the Terra Strike resource itself, not a copy")
+	expect(catalog.Actives[1] == cinder_shot, "the catalog should hold the Cinder Shot resource itself, not a copy")
 
 
 ## Godot 4.7 does not preserve the script element type on an exported C# array: these three
@@ -130,9 +138,9 @@ func check_typed_round_trip() -> void:
 ## confirmed in the editor when the first active glyph is authored.
 func check_validate() -> void:
 	expect(catalog.Validate(), "the authored catalog should validate clean")
-	expect(catalog.AllGlyphs().size() == 2, "validation should not have altered the catalog")
+	expect(catalog.AllGlyphs().size() == 3, "validation should not have altered the catalog")
 	expect(catalog.Techniques.size() == 1, "validation should not have altered the catalog")
-	expect(catalog.Actives.size() == 1, "validation should not have altered the catalog")
+	expect(catalog.Actives.size() == 2, "validation should not have altered the catalog")
 
 
 ## The reason the catalog exists: the technique layer asks for its capability by trigger, so the
@@ -143,22 +151,23 @@ func check_lookup() -> void:
 		"WallContact has no technique yet and must resolve to null, not to the double jump")
 	expect(catalog.TechniqueWithTrigger(2) == null, "HeldInput has no technique yet")
 	expect(catalog.TechniqueWithTrigger(3) == null, "Submerged has no technique yet")
-	expect(catalog.AllGlyphs().size() == 2, "AllGlyphs should flatten to the two authored glyphs, got %d" % catalog.AllGlyphs().size())
+	expect(catalog.AllGlyphs().size() == 3, "AllGlyphs should flatten to the three authored glyphs, got %d" % catalog.AllGlyphs().size())
 
 
 func check_seeding() -> void:
 	expect(catalog.DefaultSeedPoints == 5, "the catalog should seed 5 points, got %d" % catalog.DefaultSeedPoints)
 
-	expect(seeded.Entries.size() == 2, "seeding should create one entry per authored glyph, got %d" % seeded.Entries.size())
+	expect(seeded.Entries.size() == 3, "seeding should create one entry per authored glyph, got %d" % seeded.Entries.size())
 	expect(seeded.PointsFor(glyph) == 5, "the seeded double jump should hold 5 points, got %d" % seeded.PointsFor(glyph))
 	expect(seeded.PointsFor(terra_strike) == 5, "the seeded Terra Strike should hold 5 points, got %d" % seeded.PointsFor(terra_strike))
-	expect(seeded.TotalPoints() == 10, "the whole seeded loadout should hold 10 points, got %d" % seeded.TotalPoints())
+	expect(seeded.PointsFor(cinder_shot) == 5, "the seeded Cinder Shot should hold 5 points, got %d" % seeded.PointsFor(cinder_shot))
+	expect(seeded.TotalPoints() == 15, "the whole seeded loadout should hold 15 points, got %d" % seeded.TotalPoints())
 
 	# PointsFor sums across entries, so a duplicated entry would read double. Reusing the entry
 	# is what keeps seeding idempotent.
 	seeded.TrySetPoints(glyph, 0)
 	expect(seeded.HasEntry(glyph), "a zero-point allocation still stores an entry")
-	expect(seeded.Entries.size() == 2, "zeroing must reuse the entry, not append; got %d" % seeded.Entries.size())
+	expect(seeded.Entries.size() == 3, "zeroing must reuse the entry, not append; got %d" % seeded.Entries.size())
 	expect(seeded.PointsFor(glyph) == 0, "a deliberate zero should survive, got %d" % seeded.PointsFor(glyph))
 
 	expect(bare.Catalog == null, "the bare loadout should have no catalog")

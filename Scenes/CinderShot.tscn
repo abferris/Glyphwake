@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Glyphs/Payloads/CinderShotPayload.cs" id="1_cinder"]
+
+[node name="CinderShot" type="Node3D"]
+script = ExtResource("1_cinder")

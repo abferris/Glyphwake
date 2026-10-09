@@ -1,0 +1,49 @@
+[gd_resource type="Resource" script_class="ActiveGlyphData" format=3]
+
+[ext_resource type="Script" path="res://Scripts/Glyphs/Active/ActiveGlyphData.cs" id="1_active"]
+[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/GlyphCost.cs" id="2_cost"]
+[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/StatValue.cs" id="3_statvalue"]
+[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/GlyphScaling.cs" id="4_scaling"]
+[ext_resource type="PackedScene" path="res://Scenes/CinderShot.tscn" id="5_shot"]
+[ext_resource type="Script" path="res://Scripts/Glyphs/Framework/GlyphCastAnimation.cs" id="6_cast"]
+[ext_resource type="PackedScene" path="res://Scenes/CinderShotCast.tscn" id="7_castscene"]
+
+[sub_resource type="Resource" id="GlyphCost_mana"]
+script = ExtResource("2_cost")
+Amount = 10.0
+AmountPerPoint = 0.0
+
+[sub_resource type="Resource" id="StatValue_damage"]
+script = ExtResource("3_statvalue")
+Key = 0
+Value = 10.0
+
+[sub_resource type="Resource" id="GlyphScaling_damage"]
+script = ExtResource("4_scaling")
+Stat = 0
+Style = 0
+Value = 5.0
+StepSize = 1.0
+
+[sub_resource type="Resource" id="GlyphCastAnimation_cindershot"]
+script = ExtResource("6_cast")
+Scene = ExtResource("7_castscene")
+Clip = &"Cinder Shot"
+BlendIn = 0.05
+BlendOut = 0.1
+
+[resource]
+script = ExtResource("1_active")
+CastMode = 0
+EffectMode = 0
+TargetType = 2
+Affects = 1
+School = 0
+Costs = Array[ExtResource("2_cost")]([SubResource("GlyphCost_mana")])
+BaseStats = Array[ExtResource("3_statvalue")]([SubResource("StatValue_damage")])
+Scalings = Array[ExtResource("4_scaling")]([SubResource("GlyphScaling_damage")])
+Elements = Array[int]([1])
+DisplayName = "Cinder Shot"
+Description = "Gather a bolt of cinder between both hands at your chest, then push it forward toward the reticule: it flies where you are looking and its arc falls with gravity. The red sphere and the numbers are placeholders until the real fire asset and the decided values land."
+Payload = ExtResource("5_shot")
+CastAnimation = SubResource("GlyphCastAnimation_cindershot")
