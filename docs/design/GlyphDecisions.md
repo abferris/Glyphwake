@@ -373,11 +373,14 @@ a passive's own target.
 
 ### Techniques
 
-Techniques are an action/capability that rides an existing input and consumes mana. These
+Techniques are an action/capability that rides an existing input and consumes a resource --
+the one the glyph's own cost entry declares, so a movement technique can pay stamina while
+the others pay mana. These
 do not create glyphs placable in the hotkey toolbar, so it is not and active. The do add extra functionality
 that did not exist before, so they are not passive glyphs. Extra points in the glyph will scale it
 Examples:
-- Double jump (press jump again while airborne) — scaled distance; needs mana.
+- Double jump (press jump again while airborne) — scaled distance; needs stamina (moved
+  off mana 10-07; see the stamina list under Resources).
 - Wall jump (press jump while against a wall) — scaled force.
 - Waterbreathing — no breath timer; you spend mana instead, and start drowning when it runs out.
 - Spiderclimb — climb while mana lasts; points scale climb speed.
@@ -391,7 +394,9 @@ Double Jump (decided 10-02) — the first technique built:
 - Every 10 points: +1 mid-air jump. 11 → third jump, 21 → fourth, ... 91 → eleventh; at
   the full pool, ten mid-air jumps. Each starts at half the normal jump's height and
   reaches twice it over its decade, then caps — further points buy new jumps, not growth.
-- More points also spend less mana (linear decrease, flooring at 0).
+- More points also spend less stamina (linear decrease, flooring at 0). The cost entry
+  declares Stamina, and the payer reads that declaration rather than assuming mana
+  (10-07, was mana decided 10-02).
 - The chain resets when you land.
 
 ### Modifier math & stacking
@@ -520,10 +525,51 @@ Where the code deliberately differs from this document, and why.
   for every glyph is a simplification, not a design: nothing needs per-glyph starting points yet,
   and the rune setup menu replaces this along with save-loaded allocations.
 
+## Code notes (10-03 attachments, session 4)
+
+- **A glyph carries an animation, as its own scene rather than as a clip name.**
+  `GlyphData.CastAnimation` is a `GlyphCastAnimation` (`PackedScene` + `StringName` clip +
+  blend times), on the base class so an active, a technique and a passive trigger all get it.
+  The reason it is a scene and not a name in the player's library is
+  `AnimationIds.ReachableClips`: that list is the closed set of clips movement can ask for, and
+  `LocomotionGraph` gives every state every transition, so 16 clips is already 240 transitions
+  and the rule is quadratic. Adding one state per glyph would turn a fixed cost into a per-glyph
+  one that grows faster than the glyph count — the opposite of what the catalog work bought.
+  Carrying the animation in its own scene keeps `ReachableClips` locomotion and lets any number of
+  glyphs each own theirs.
+- **A separate AnimationPlayer over the same skeleton is the reason this is opt-in.**
+  The locomotion tree already drives the player's `Skeleton3D`. A second `AnimationPlayer` writing
+  the same bones is a second writer, and which one wins is a question about process order rather
+  than something this resource answers. It is left to whoever implements playback to settle, and
+  recorded as an open question in `CURRENT_TODO.md`.
+- **A glyph's landing effect is a second slot, not part of the projectile scene.**
+  `ActiveGlyphData.ImpactPayload` sits beside `Payload` because the two are instantiated in
+  different places — `Payload` at the caster and it travels, `ImpactPayload` where the payload
+  resolves. It is also what lets one impact be shared by every glyph that uses it instead of every
+  projectile scene carrying its own copy.
+- **"Animation, model, or a mix" is not a question the model has to answer.** Both new slots are
+  `PackedScene`, so a fire blast's projectile is a scene holding a `MeshInstance3D` and a script,
+  and its impact is a scene holding whatever combination of mesh, `GPUParticles3D` and light the
+  effect needs. That was already the reasoning behind `Payload`; this session gave the impact the
+  same treatment rather than inventing a new vocabulary for it.
+- **Nothing read any of this at the time, and that was the honest state.** `Payload`, `ImpactPayload`,
+  `CastAnimation`, `CastMode` and `CastTime` all had zero consumers — the cast pipeline below is
+  still unbuilt, so these are attachment points with tests, not working features. `CastAnimation`
+  has since got its playback (session 5, below); the rest still wait on the cast pipeline. Pinned by
+  `tools/test_glyph_payloads.gd`, which round-trips all three through a real save and load and
+  checks `GlyphCastAnimation.Validate` catches a clip name the scene does not hold and a scene
+  with no `AnimationPlayer` — the two mistakes the editor cannot catch, since `Scene` accepts any
+  scene. Same failure shape `LocomotionGraph.MissingClips` reports for a renamed locomotion clip.
+- **Godot finding: `PackedScene.pack()` silently drops a child whose `owner` is unset.** A scene
+  assembled in code rather than authored in the editor saves as its root alone, which made the
+  nested-`AnimationPlayer` case of that test read as "no AnimationPlayer in the scene" instead of
+  as the broken fixture it was. Recorded in the test; an editor-authored scene has owners set, so
+  it only bites scripted scene building.
+
 ## Not built yet (next layers)
 
 - Casting/execution of active glyphs (needs the AimSource → AimTarget pipeline, and a spawner
-  for `Payload`)
+  for `Payload` + `ImpactPayload`; `CastAnimation` now has its player — see the session 5 note)
 - Status effects on glyphs (slow, burning, dazed, ...) — `PassiveTrigger` has the event, but
   no status concept to fire
 - Resolving modifiers flat → percent → multiply, and aggregating them across a loadout
@@ -531,6 +577,30 @@ Where the code deliberately differs from this document, and why.
 - Point-allocation UI (the rune setup menu) — `GlyphLoadout` has the allocation model and the
   inspector is the debug allocator
 - Remaining techniques wired to locomotion (wall jump, air dash, waterbreathing, spiderclimb)
+
+## Code notes (10-03 air-step cast, session 5)
+
+- **The two-writer question is answered, and the answer removed the second writer.** The double
+  jump's cast plays through `Scripts/Player/Animation/Movement/CastAnimationLayer.cs`: the cast
+  scene's clips are merged into a separate `cast` library on the main player, and a
+  `AnimationNodeOneShot` in the same tree runs the clip once, fades in and out, and hands back. Its
+  filters — set from the clip's own track list at cast time — decide which bones the cast takes
+  over, so locomotion keeps playing underneath on every other bone. No second `AnimationPlayer`
+  writes the skeleton; the cast scene's own player is instantiated once at build, merged, and freed.
+  The mechanism is general: the next glyph with a cast animation (a fire bolt taking the hands)
+  points at its own scene and works through the same layer.
+- **The variant table is what makes one cast animation directional.** `GlyphCastVariant` entries
+  (key → clip) on `GlyphCastAnimation.Variants`, keyed by the closed vocabulary in
+  `GlyphCastVariant` (`forward_l` … `backward_r`, lower case because they are authored more often
+  than read). An unknown key falls back to `Clip` rather than to silence, so a typo fails safe to
+  the default pose; `Validate` checks every variant clip against the scene. The double jump carries
+  all eight, and `CastAnimationLayer` resolves the key from the direction held and the foot the gait
+  phase says is leading. See `PlayerDecisions.md` for the alternation and the measured boundary.
+- **Playback is keyed by the cast's own variant table, and the merge is a library, not names.** An
+  animation name cannot contain a `/`, so the namespace is a separate `cast` `AnimationLibrary` on
+  the main player and `cast/<clip>` is the player's own library/animation path. The locomotion graph
+  and the tests never mistake a cast clip for a reachable one.
+
 - Input map, aim raycast, cast preview (see `ControlsDecisions.md`)
 - Unlocks via missions, reset in safe zones, hotbar binding (see `ControlsDecisions.md`)
 - Remap anywhere vs safe-zone-only (above).

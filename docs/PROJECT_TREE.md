@@ -15,9 +15,12 @@ Glyphwake/
 │
 ├── 🎮 Scenes/
 │   ├── World.tscn                   # Main scene — Terrain3D island + water + player
-│   ├── Player.tscn                  # CharacterBody3D player (controller + camera + stickman + glyph runtime)
-│   ├── Stickman.tscn                # Low-poly stickman model instance
-│   └── TestWorld.tscn               # Scratch/test world scene
+│   ├── Player.tscn                  # CharacterBody3D player (controller + camera + stickman + glyph runtime + HUD)
+│   ├── Stickman.tscn                # Generated animation library (42 clips); do not hand-edit
+│   ├── AirStep.tscn                 # Generated air-step cast clips (8), the double jump's CastAnimation scene; do not hand-edit
+│   ├── TestWorld.tscn               # Scratch/test world scene
+│   └── UI/
+│       └── Hud.tscn                  # The HUD CanvasLayer instanced once by Player.tscn: aim reticle + glyph dial
 │
 ├── 🎨 Shaders/
 │   ├── water_from_above.gdshader  # surface seen from above; angle + depth driven transparency
@@ -41,15 +44,16 @@ Glyphwake/
 │   │   ├── Cameras/
 │   │   │   ├── CameraController.cs  # First-person head camera (mouse look, dive look)
 │   │   │   └── DebugChaseCamera.cs  # Second outside-view camera; borrows the viewport on demand
-│   │   └── Animation/Movement/      # AnimationTree state selection + the surface-swim pose
-│   │       ├── PlayerAnimator.cs    # Picks the AnimationTree state and speed from movement state + input
-│   │       ├── LocomotionGraph.cs   # One reachable clip + how far into it its state starts
+│   │   └── Animation/Movement/      # AnimationTree state selection + the surface-swim pose + the cast layer
+│   │       ├── PlayerAnimator.cs    # Picks the AnimationTree state and speed from movement state + input; gait phase
+│   │       ├── LocomotionGraph.cs   # One reachable clip + how far into it its state starts; wraps the cast's one-shot
+│   │       ├── CastAnimationLayer.cs # Plays a glyph's cast animation as a filter layer in the same tree: clips merged into a "cast" library, one-shot runs the clip over the bones it names
 │   │       └── SurfaceSwimPose.cs   # Head level + both hands under the waterline while treading
 │   ├── World/
 │   │   └── WaterZone.cs             # Area3D water trigger: surface Y, Enter/Exit water
 │   └── Glyphs/                      # Pure Resource data model (1 glyph = 1 skill) + the player-owned loadout
 │       ├── Active/
-│       │   └── ActiveGlyphData.cs   # Cast/effect mode, targeting, costs, Payload; numbers are base stats
+│       │   └── ActiveGlyphData.cs   # Cast/effect mode, targeting, costs, Payload + ImpactPayload; numbers are base stats
 │       ├── Technique/
 │       │   └── TechniqueGlyphData.cs # Capability glyph: trigger + costs, no hotbar slot
 │       ├── Passive/
@@ -57,7 +61,9 @@ Glyphwake/
 │       │   └── PassiveTrigger.cs    # Event-driven spawn (burn on hit, refill on kill), own base stats + scalings
 │       └── Framework/               # Shared building blocks — no glyph-type specifics
 │           ├── GlyphCatalog.cs       # Which glyphs exist, in three typed lists; one resource ref in the scene
-│           ├── GlyphData.cs          # Abstract base: identity, school, elements, tags, BaseStats + Scalings, point guideposts
+│           ├── GlyphData.cs          # Abstract base: identity, school, elements, tags, CastAnimation, BaseStats + Scalings, point guideposts
+│           ├── GlyphCastAnimation.cs # A cast animation as its own scene + clip name + variants, with a Validate that checks them against the scene
+│           ├── GlyphCastVariant.cs   # One variant in a cast animation's table: a key naming one directional variant + its clip; the closed key vocabulary
 │           ├── GlyphLoadout.cs       # Player-owned point allocation (Node): entries keyed by resource path, 100-point pool
 │           ├── GlyphLoadoutEntry.cs  # One glyph + the points that player put in it
 │           ├── StatValue.cs          # One base statistic: StatKey + base value
@@ -76,12 +82,15 @@ Glyphwake/
 │           ├── GlyphElement.cs       # Enum: the 6 elements + None (what it is resisted by)
 │           ├── GlyphTag.cs           # Free-form tag with a stable Id, matched by Id
 │           └── StatKey.cs            # Enum of every scalable stat, split glyph-own vs caster-own
+│   ├── UI/                           # Screen-space HUD; Player.tscn instances Scenes/UI/Hud.tscn
+│   │   ├── AimReticle.cs             # Center reticle: translucent dot + ring, custom _Draw
+│   │   └── GlyphDial.cs              # Corner hexagon dial: health/mana bars on its edges + glyph graphic
 │
 ├── 🎴 Resources/                     # Authored .tres game data
 │   └── Glyphs/
 │       ├── GlyphCatalog.tres         # Which glyphs exist, in three typed lists. Scenes reference this once, never a glyph
 │       └── Techniques/
-│           └── DoubleJump.tres       # First glyph: Technique, Flowing, Zephyr+Anima; JumpCount Step-10, Mana 10 −0.5/pt
+│           └── DoubleJump.tres       # First glyph: Technique, Flowing, Zephyr+Anima; JumpCount Step-10, Stamina 10 −0.5/pt; CastAnimation = the air-step scene, 8 directional variants
 │
 ├── 🧩 addons/
 │   └── terrain_3d/                  # Terrain3D addon (C++/GDExtension)
@@ -120,7 +129,7 @@ Glyphwake/
 ├── 🛠️ tools/                        # GDScript authoring/import scripts
 │   ├── import_island.gd             # Import island heightmaps → terrain
 │   ├── build_world.gd               # Build/rebuild the world scene
-│   ├── build_stickman.gd            # Regenerate Scenes/Stickman.tscn from the PolyOne FBX
+│   ├── build_stickman.gd            # Regenerate Scenes/Stickman.tscn (42 clips: the FBX clips, the synthesized tread, 8 synthesized directional ground jumps) and Scenes/AirStep.tscn (8 synthesized air steps) from the PolyOne FBX
 │   ├── build_catalog.gd             # Regenerate Resources/Glyphs/GlyphCatalog.tres (via ResourceSaver)
 │   ├── fix_refs.sh                  # Rewrite stale res:// refs after an on-disk file move
 │   ├── import_control.gd            # Import controller setup
@@ -129,7 +138,10 @@ Glyphwake/
 │   │                                #   test_swim / test_wade / test_plunge / test_view /
 │   │                                #   test_underwater_look / test_underwater_filter /
 │   │                                #   test_glyph_loadout / test_glyph_catalog /
-│   │                                #   test_animation_clips / test_double_jump / ...
+│   │                                #   test_glyph_payloads /
+│   │                                #   test_animation_clips / test_double_jump /
+│   │                                #   test_air_jump_animation (the cast: variants, merge,
+│   │                                #   layering, alternation, handback) / ...
 │   ├── sample_control.gd
 │   ├── audit_*.gd                   # audit_feet / audit_heights / audit_phase /
 │   │                                #   audit_states / audit_stop
@@ -140,7 +152,10 @@ Glyphwake/
 │                                    #   reconstruction against plates of known height) /
 │                                    #   probe_techniques / probe_airjump_arc (glyph runtime
 │                                    #   wiring + the raw jump arc) / probe_api /
-│                                    #   probe_cliff / probe_fall / probe_openair_input
+│                                    #   probe_cliff / probe_fall / probe_openair_input /
+│                                    #   probe_walk_phase (the walk and run cycles' foot
+│                                    #   positions, the gait phase's measurement) /
+│                                    #   probe_cast_animation (the cast's one-shot state)
 │
 └── 📚 docs/                         # This documentation set (see docs/README.md)
 ```

@@ -67,8 +67,10 @@ The player's resource pools — what a glyph's `GlyphCost` is paid out of. Mana 
 stamina, each with a max and the slow passive regeneration that runs at all times (safe
 zones, resting and regen passives boost it later). `TrySpend` refuses a cost the pool
 cannot pay and refuses negative amounts, so a cost cannot become a refund by accident.
-Health and stamina have no spender yet; the pools exist so a cost entry's resource is
-enough to reach one when their glyphs arrive.
+Health has no spender yet; stamina is what the double jump pays, reached the same way --
+the cost entry's `Resource` names the pool and the payer goes to it rather than assuming
+mana. The pools are built together so a cost entry's resource is always enough to reach
+one when its glyph arrives.
 
 ### `PlayerTechniques.cs` (C#, runtime)
 The technique layer: turns points in a `TechniqueGlyphData` into a capability the

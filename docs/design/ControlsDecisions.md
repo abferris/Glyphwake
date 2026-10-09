@@ -25,6 +25,41 @@ playtesting disagrees, they change first.
 - Will have crosshairs on screen
   - Need to decide when to activate crosshairs
 
+## Base reticle (implemented)
+
+- A translucent dot with a small circle around it sits at the exact center of the screen
+  whenever the player can aim
+-  LMB casts at reticle
+- RMB interacts with  what is closest to reticle
+- always visible (for noww)
+  will fill with color to signify cast time (or something else)
+- Drawn, not a texture
+- Lives in the HUD scene — `Scenes/UI/Hud.tscn`, a `Hud` CanvasLayer instanced once by
+  `Player.tscn` — not in World.tscn: it belongs to the first-person rig the same way the
+  camera does, so every world that instances Player.tscn carries it. The HUD is its own
+  scene (scripts under `Scripts/UI/`) rather than inline nodes in Player.tscn so UI
+  changes never reopen the player scene — the same reason the glyph runtime was pulled
+  out of it — and the menus and toolbar coming later have a home.
+- Radii, width and colours are exports on the script — taste values, not decisions; tuned in the inspector.
+
+## Glyph dial — health/mana HUD (implemented, display-only)
+
+- A flat-topped hexagon pinned into the lower right corner of the screen: 
+-  right corner touches right screen edge 
+- bottom edge is flush with the screen bottom
+- Width has default value but can be scaled with ui options
+- The resource bars run inside hexagon's edges
+- numerical values can be revealed with the ` key
+- Mana and health grow towards the top-left corner
+- stamina on bottom goes right to left.
+- The selected glyph's graphic sits in the hexagon's centre
+- Drawn, not a texture, on the same `Hud` CanvasLayer as the reticle (`Hud/GlyphDial` in
+  `Scenes/UI/Hud.tscn`, script `Scripts/UI/GlyphDial.cs`), on a full-rect Control with the
+  pinning computed from the viewport each draw, so window resizes reposition it. Width,
+  bar width, colours and glyph size are exports — taste values, not decisions.
+- UI reads, and doesnt write information
+- Selected Glyph is from glyph hotkey toolbar
+
 ## Hotkey Toolbar (WoW-style toolbar)
 
 - A fixed toolbar with 10 slots to put glyphs in.
@@ -32,10 +67,7 @@ playtesting disagrees, they change first.
 - Tab switches between hotkey sets
 - Scroll wheel switches selected glyph
 - Alternative number keys to change selected glyph
-- Q & E to change selected glyph was a provisional idea and is dropped — Q & E are
-  consumables (see *Consumables*). Glyph cycling is Tab, scroll and the number keys.
-- potential for player choice to rebind — settled: all of it is remappable, see *Remapping*
-- Hotkey sets are not changeable all the time.
+- tab changes which set of glpyhs are in the toolbar
 
 ## Input map (tentative defaults)
 
@@ -77,20 +109,17 @@ open question on what hold-right-click means once interact owns the tap.
   a unit is sticky, and is what group content, threat and nameplates need. Targeting gets
   its own key, so interacting never silently changes who is marked.
 
-### Why RMB is not the secondary cast
-
-Two taps on one button does not disambiguate. If RMB is interact, the secondary form of a
-glyph needs its own binding — a second hotbar set, or a modifier on LMB. This settles the
-earlier idea of splitting RMB between a tap-for-secondary-cast and a hold-for-look: the tap
-is spent.
-
-
 ## Aiming 
 
+- glyphs will repeat cast if mouse is held down
+  - not for channel glyphs
+  - not for held glyphs (holding a spell to release)
+  - will be an option to disable in player options
+  - not for ritual glyphs
 ### Projectile glyphs:
 - Most attack glyphs are simple projectiles
 - Will shoot in center of screen out.
-- Projectile will have to 
+- Some will be able to hold rmb for either more "oomph" or ready to release cast
 - Crosshairs provided in combat (not sure how to trigger)
 - Certain glyphs may have recast for secondary. 
   - Must be on same skill to recast
@@ -142,8 +171,7 @@ Two consumables can be bound to q and e. These can be bought. Currently one of t
 
 ## Remapping (a requirement, not tentative)
 
-Every action in the input map is player-remappable — including the mouse buttons, the
-right-click tap/hold split, and the preview key. The defaults above are conveniences so the
+Most imputs should be remappable. The defaults above are conveniences so the
 game is playable before anyone opens the options; nothing in the design depends on them.
 
 - Bind by *action*, not by key, so gameplay code can never assume a physical key.

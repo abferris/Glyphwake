@@ -32,3 +32,5 @@ Root-level files: `GAME.md` (game design), `PROJECT_TREE.md` (project tree),
 - Decision docs are written as decisions + rationale, not step-by-step tutorials.
 - Editor tooling uses Godot editor menus; reusable runtime scripts live under
   `Scripts/` (C#) and `demo/src/` (GDScript learning demo).
+
+| `UIDecisions.md` | HUD, reticle, and glyph dial UI placement and visuals |
