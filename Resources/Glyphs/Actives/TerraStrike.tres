@@ -4,9 +4,15 @@
 [ext_resource type="Script" uid="uid://wxf1by2b6qfp" path="res://Scripts/Glyphs/Framework/GlyphCost.cs" id="2_cost"]
 [ext_resource type="Script" uid="uid://cd0qbq1kujf02" path="res://Scripts/Glyphs/Framework/StatValue.cs" id="3_statvalue"]
 [ext_resource type="Script" uid="uid://cdmn2pr8vq0n1" path="res://Scripts/Glyphs/Framework/GlyphCastAnimation.cs" id="4_cast"]
+[ext_resource type="Script" uid="uid://dlx3b6w3uxsgw" path="res://Scripts/Glyphs/Framework/GlyphCastVariant.cs" id="8_variant"]
 [ext_resource type="PackedScene" path="res://Scenes/TerraStrike.tscn" id="5_strike"]
 [ext_resource type="Texture2D" uid="uid://b6en3fbf6nmg" path="res://Assets/Glyphs/terra_strike_glyph.png" id="6_icon"]
 [ext_resource type="PackedScene" path="res://Scenes/TerraFist.tscn" id="7_fist"]
+
+[sub_resource type="Resource" id="GlyphCastVariant_forwardr"]
+script = ExtResource("8_variant")
+Key = &"forward_r"
+Clip = &"Terra Strike L"
 
 [sub_resource type="Resource" id="GlyphCastAnimation_terrastrike"]
 script = ExtResource("4_cast")
@@ -14,6 +20,7 @@ Scene = ExtResource("5_strike")
 Clip = &"Terra Strike"
 BlendIn = 0.05
 BlendOut = 0.1
+Variants = Array[ExtResource("8_variant")]([SubResource("GlyphCastVariant_forwardr")])
 
 [sub_resource type="Resource" id="GlyphCost_mana"]
 script = ExtResource("2_cost")
@@ -36,7 +43,7 @@ Costs = Array[ExtResource("2_cost")]([SubResource("GlyphCost_mana")])
 BaseStats = Array[ExtResource("3_statvalue")]([SubResource("StatValue_damage")])
 Elements = Array[int]([3])
 DisplayName = "Terra Strike"
-Description = "Punch forward with an earthen fist that forms around your right hand. Damage and mana cost are placeholders until the numbers are decided."
+Description = "Punch forward with an earthen fist that forms around your rear hand: whichever hand is farther back throws the strike. Damage and mana cost are placeholders until the numbers are decided."
 Icon = ExtResource("6_icon")
 CastAnimation = SubResource("GlyphCastAnimation_terrastrike")
 Payload = ExtResource("7_fist")

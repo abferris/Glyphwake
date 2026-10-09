@@ -15,6 +15,8 @@ public sealed class PlayerRig
     /// Bone names are part of the model contract, not scene layout, but they resolve through
     /// here for the same reason as the node paths: one place to find out what is missing.
     public const string HeadBoneName = "Head";
+    public const string Spine1BoneName = "Spine1";
+    public const string Spine2BoneName = "Spine2";
     public const string LeftShoulderBoneName = "LeftShoulder";
     public const string RightShoulderBoneName = "RightShoulder";
     public const string LeftHandBoneName = "LeftHand";

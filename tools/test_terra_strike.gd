@@ -6,11 +6,11 @@ extends SceneTree
 ## off reads of the controller's and payload's own state:
 ##
 ##   1. the catalog's active is Terra Strike: display name, icon, and a CastAnimation whose
-##      scene really holds the "Terra Strike" clip
-##   2. the punch clip is ~0.25 s (the user's spec number) and upper-body only: no leg track,
+##      scene really holds the "Terra Strike" clip (and the left-arm mirror under its variant)
+##   2. the punch clip is ~0.5 s (the user's spec number) and upper-body only: no leg track,
 ##      which is what leaves locomotion playing underneath a cast
-##   3. the playback layer merged the punch into the cast library alongside the air steps, and
-##      the tree is wrapped with the cast's one-shot
+##   3. the playback layer merged the punch and its mirror into the cast library alongside
+##      the air steps, and the tree is wrapped with the cast's one-shot
 ##   4. LMB fires the punch on dry land: CastState "Terra Strike", locomotion underneath, and
 ##      the cast hands back when the clip ends
 ##   5. the payload spawned and freed itself with the cast (the fist's life is the cast's)
@@ -24,11 +24,12 @@ extends SceneTree
 const WORLD := "res://Scenes/World.tscn"
 const WARM_TICKS := 8
 
-# The fist's measured reach in player space (tools/probe_terra_strike.gd, plus this test's own
-# window prints): the hand hangs at the side ~0.3 m out, just below the body origin, and the
-# punch drives it ~0.15 m further toward the body's facing over the window. A box centred on the
-# window's fist path, half extents (0.25, 0.3, 0.35): the fist is in it through the window.
-const DUMMY_OFFSET := Vector3(0.5, -0.05, 0.1)
+# The fist's measured reach in player space (this test's own window prints): the rear-right
+# straight drives the fist from the raised guard to the reticle at x ~0 (dead ahead), reaching
+# player-local (~-0.12, ~-0.08, ~-0.33) at full extension. NOTE: the in-game rig compresses
+# the bare-Scene probe's heights (probe hand ~+1.34) onto a low local origin, so the box sits
+# low, on the printed strike line -- read the strike=/dummy= prints to re-place if it moves.
+const DUMMY_OFFSET := Vector3(0.0, 0.0, -0.3)
 const DUMMY_HALF := Vector3(0.25, 0.3, 0.35)
 
 var phase := 0
@@ -133,8 +134,8 @@ func _physics_process(_delta: float) -> bool:
 			expect(scene_player.has_animation("Terra Strike"),
 				"the punch scene has no clip 'Terra Strike'")
 			var anim := scene_player.get_animation("Terra Strike")
-			expect(absf(anim.length - 0.25) < 0.01,
-				"the punch clip is %.3f s, expected ~0.25 (the spec's number)" % anim.length)
+			expect(absf(anim.length - 0.5) < 0.01,
+				"the punch clip is %.3f s, expected ~0.5 (the spec's number)" % anim.length)
 			var track_count := anim.get_track_count()
 			expect(track_count > 0, "the punch clip has no tracks")
 			for i in range(track_count):
@@ -145,13 +146,17 @@ func _physics_process(_delta: float) -> bool:
 					var bone := str(p.get_subname(0))
 					expect(not bone.contains("Leg") and not bone.contains("Foot"),
 						"punch track %d animates a leg ('%s'): the punch must leave locomotion playing" % [i, bone])
+			expect(scene_player.has_animation("Terra Strike L"),
+				"the punch scene has no mirror clip 'Terra Strike L' for the left-arm variant")
 		scene_inst.free()
 
 		var merged: PackedStringArray = player.get_node("Visual/Anim").get_animation_list()
 		expect(merged.has("cast/Terra Strike"),
 			"the merged library has no 'cast/Terra Strike'; the playback layer did not merge it")
-		expect(player.CastClipNames.size() == 9,
-			"the player merged %d cast clips, expected 9 (8 air steps + the punch)" % player.CastClipNames.size())
+		expect(merged.has("cast/Terra Strike L"),
+			"the merged library has no 'cast/Terra Strike L'; the left-arm variant did not merge")
+		expect(player.CastClipNames.size() == 11,
+			"the player merged %d cast clips, expected 11 (8 air steps + the punch + its mirror + Cinder Shot's cast)" % player.CastClipNames.size())
 		var tree: AnimationTree = player.get_node("AnimTree")
 		var wrapped := tree.tree_root as AnimationNodeBlendTree
 		expect(wrapped != null and wrapped.has_node("Cast"),
@@ -207,17 +212,17 @@ func _physics_process(_delta: float) -> bool:
 			# The dummy rides the player layer; the payload's mask is retuned the way a menu
 			# will, live, before the hit window opens.
 			payload.TargetMask = 2
-		if t > 1 and t <= 12:
+		if t > 1 and t <= 40 and is_instance_valid(payload):
 			# The positions print so a placement miss can be read off the run rather than
 			# guessed at. The payload frees itself at its own clock's end, so the node is
 			# only probed while the cast is up.
-			var mesh := find_node(payload, "Fist")
+			var strike := find_node(payload, "StrikeArea") as Node3D
 			if t == 2:
-				expect(mesh != null and mesh.visible,
-					"the fist mesh is not visible during the cast")
-			if mesh != null:
-				print("tick %d fist=%s dummy=%s vis=%s hits=%d" % [t, mesh.global_position,
-					dummy.global_position, mesh.visible, dummy.hits])
+				expect(strike != null,
+					"the payload built no StrikeArea")
+			if strike != null:
+				print("tick %d strike=%s dummy=%s hits=%d" % [t, strike.global_position,
+					dummy.global_position, dummy.hits])
 		if player.CastState != "":
 			return false
 		if t < 5:

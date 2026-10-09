@@ -116,6 +116,7 @@ public partial class PlayerController : CharacterBody3D
     private PlayerAnimator _animator;
     private CastAnimationLayer _castLayer;
     private PlayerActives _actives;
+    private StringName _activeCastKey;
 
     private Vector3 _horizontalVelocity = Vector3.Zero;
     private Vector3 _impulseVelocity = Vector3.Zero;
@@ -177,6 +178,12 @@ public partial class PlayerController : CharacterBody3D
     /// an empty string when none is. Read by the GDScript tests: the cast's one-shot reports
     /// nothing on its own, so this is the honest way to ask whether a step is playing.
     public string CastState => _castLayer?.CurrentClip ?? "";
+
+    /// Which arm the most recent active cast punched with. The cast picks the rear arm the
+    /// moment it fires -- the hand farther back along the body's facing -- and hands the choice
+    /// to the payload, which rides that arm's hand. Read at spawn, so the payload attaches to the
+    /// same hand the cast's clip animated.
+    public bool ActiveCastLeftArm { get; private set; }
 
     /// The cast clips merged into the player's library from the casts' scenes -- the technique's
     /// and the active's. Empty when no cast animation is authored.
@@ -670,11 +677,32 @@ public partial class PlayerController : CharacterBody3D
         Glyphs.GlyphCastAnimation cast = _actives.Active?.CastAnimation;
         if (_castLayer != null && _castLayer.Playable && cast != null && cast.HasAnimation)
         {
-            StringName key = Glyphs.GlyphCastVariant.KeyFor(MoveDirection.Forward, true);
-            _castLayer.PlayFrom(cast, key, 1f);
+            // The rear arm punches, so the variant that resolves the mirror clip plays when the
+            // rear arm is the left: the clip was authored for the right, and mirrored under the
+            // variant for the left. The key is remembered for the payload so it tracks the same
+            // choice one decision later.
+            bool leftIsRear = LeftHandIsRear();
+            ActiveCastLeftArm = leftIsRear;
+            _activeCastKey = Glyphs.GlyphCastVariant.KeyFor(MoveDirection.Forward, leadsLeft: !leftIsRear);
+            _castLayer.PlayFrom(cast, _activeCastKey, 1f);
         }
 
         SpawnPayload(damage);
+    }
+
+    /// Whether the left hand is the rear hand: farther back along the body's facing than the
+    /// right by more than a deadband. The deadband keeps a standing sway or a mid-stride bob
+    /// from flipping the punch arm on a tie; a symmetric pose defaults to right-handed. Measured
+    /// off the skeleton's global pose, so the read is the posed body rather than the rest rig.
+    private bool LeftHandIsRear()
+    {
+        if (_rig?.Skeleton == null || _rig.LeftHandBone < 0 || _rig.RightHandBone < 0)
+            return false;
+        Vector3 forward = -GlobalTransform.Basis.Z;
+        Skeleton3D skeleton = _rig.Skeleton;
+        Vector3 left = (skeleton.GlobalTransform * skeleton.GetBoneGlobalPose(_rig.LeftHandBone)).Origin;
+        Vector3 right = (skeleton.GlobalTransform * skeleton.GetBoneGlobalPose(_rig.RightHandBone)).Origin;
+        return right.Dot(forward) - left.Dot(forward) > RearHandGap;
     }
 
     /// Instantiates the active glyph's payload and hands it the cast: the caster, the damage
@@ -692,8 +720,7 @@ public partial class PlayerController : CharacterBody3D
         Glyphs.GlyphCastAnimation cast = _actives.Active?.CastAnimation;
         if (_castLayer != null && cast != null && cast.HasAnimation)
         {
-            float clipLength = _castLayer.ClipLengthFrom(cast,
-                Glyphs.GlyphCastVariant.KeyFor(MoveDirection.Forward, true));
+            float clipLength = _castLayer.ClipLengthFrom(cast, _activeCastKey);
             if (clipLength > 0.01f)
                 duration = clipLength;
         }
@@ -710,7 +737,12 @@ public partial class PlayerController : CharacterBody3D
     /// The cast duration handed to a payload when the glyph has no cast animation to read one
     /// from. The punch's spec number rather than a guess; the glyph's own clip overrides it
     /// when there is one.
-    private const float DefaultCastDuration = 0.25f;
+    private const float DefaultCastDuration = 0.5f;
+
+    /// How much farther back the rear hand must be before the punch picks it, in metres along
+    /// the body's facing. The deadband makes the arm choice steady-state: a symmetric stance
+    /// punches right, and only a decisive lead flips it.
+    private const float RearHandGap = 0.05f;
 
     private void SimulateSwim(Vector2 input, float dt)
     {
